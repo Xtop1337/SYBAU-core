@@ -268,3 +268,133 @@ pub fn parse_duration(text: &str) -> anyhow::Result<std::time::Duration> {
     humantime::parse_duration(text.trim())
         .map_err(|e| anyhow::anyhow!("bad duration `{text}`: {e}"))
 }
+
+/// DNS section (`dns`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct DnsConfig {
+    pub servers: Vec<DnsServerConfig>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<DnsRule>,
+    /// Server for queries no rule matched. Default: the first server.
+    #[serde(rename = "final", skip_serializing_if = "Option::is_none")]
+    pub r#final: Option<String>,
+    /// `as_is` (default), `prefer_ipv4`, `prefer_ipv6`, `ipv4_only`, `ipv6_only`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<String>,
+    /// Static answers: name → addresses.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub hosts: std::collections::BTreeMap<String, Vec<String>>,
+    pub cache: DnsCacheConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fakeip: Option<FakeIpConfig>,
+    /// EDNS Client Subnet sent with every query, e.g. `95.84.0.0/24`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_subnet: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DnsServerConfig {
+    pub tag: String,
+    /// `1.1.1.1`, `udp://`, `tcp://`, `tls://`, `https://host/dns-query`,
+    /// `local` (system resolver), `fakeip`, `rcode://refused`.
+    pub address: String,
+    /// Outbound used to reach the server. Default: direct.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detour: Option<String>,
+    /// Server that resolves this server's own domain. Default: the system resolver.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address_resolver: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_subnet: Option<String>,
+    /// TLS settings for `tls://` and `https://` servers (SNI, pinning).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls: Option<crate::model::TlsConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct DnsCacheConfig {
+    pub enabled: bool,
+    pub max_entries: usize,
+    /// Seconds.
+    pub min_ttl: u32,
+    pub max_ttl: u32,
+}
+
+impl Default for DnsCacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_entries: 4096,
+            min_ttl: 30,
+            max_ttl: 86400,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct FakeIpConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inet4_range: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inet6_range: Option<String>,
+}
+
+impl Default for FakeIpConfig {
+    fn default() -> Self {
+        Self {
+            inet4_range: Some("198.18.0.0/15".into()),
+            inet6_range: Some("fc00::/18".into()),
+        }
+    }
+}
+
+/// A DNS rule: conditions plus the server to ask.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct DnsRule {
+    #[serde(flatten)]
+    pub conditions: HeadlessRule,
+    /// `A`, `AAAA`, `HTTPS`, ... or numbers.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub query_type: Vec<String>,
+    pub server: String,
+}
+
+impl<'de> Deserialize<'de> for DnsRule {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let mut map = serde_json::Map::deserialize(deserializer)?;
+        let server = match map.remove("server") {
+            Some(serde_json::Value::String(s)) => s,
+            _ => return Err(D::Error::custom("DNS rule needs a `server` string")),
+        };
+        let query_type = match map.remove("query_type") {
+            None | Some(serde_json::Value::Null) => Vec::new(),
+            Some(serde_json::Value::Array(items)) => items
+                .into_iter()
+                .map(|v| match v {
+                    serde_json::Value::String(s) => Ok(s),
+                    serde_json::Value::Number(n) => Ok(n.to_string()),
+                    _ => Err(D::Error::custom(
+                        "`query_type` entries must be strings or numbers",
+                    )),
+                })
+                .collect::<Result<_, _>>()?,
+            Some(serde_json::Value::String(s)) => vec![s],
+            Some(serde_json::Value::Number(n)) => vec![n.to_string()],
+            Some(_) => return Err(D::Error::custom("bad `query_type`")),
+        };
+        let conditions =
+            HeadlessRule::deserialize(serde_json::Value::Object(map)).map_err(D::Error::custom)?;
+        Ok(Self {
+            conditions,
+            query_type,
+            server,
+        })
+    }
+}

@@ -1,0 +1,22 @@
+[package]
+name = "sybau-dns"
+description = "SYBAU-CORE: DNS messages, upstream clients, cache and fake-ip"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sybau-common.workspace = true
+sybau-config.workspace = true
+sybau-transport.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+http = "1"
+parking_lot.workspace = true
+rand.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

@@ -17,6 +17,7 @@ sybau-proto = { path = "crates/sybau-proto" }
 sybau-transport = { path = "crates/sybau-transport" }
 sybau-tls = { path = "crates/sybau-tls" }
 sybau-route = { path = "crates/sybau-route" }
+sybau-dns = { path = "crates/sybau-dns" }
 
 anyhow = "1"
 async-trait = "0.1"

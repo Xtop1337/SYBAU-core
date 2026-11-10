@@ -413,3 +413,24 @@ fn load_rule_set(rs: &RuleSetConfig, builder: &SpecBuilder<'_>) -> Result<Vec<Ru
         other => bail!("unknown rule-set type `{other}` (local, inline or remote)"),
     }
 }
+
+/// Compiles extra rules (DNS rules) with the same geo files and the
+/// rule-sets of the router.
+pub fn compile_rule(
+    cfg: &RouteConfig,
+    assets: &Assets,
+    geo: &GeoCache,
+    rule_sets: &HashMap<String, Arc<RuleSet>>,
+    rule: &HeadlessRule,
+    query_types: Vec<u16>,
+) -> Result<Rule> {
+    let builder = SpecBuilder {
+        assets,
+        geo,
+        geosite: cfg.geosite.clone(),
+        geoip: cfg.geoip.clone(),
+    };
+    let mut spec = builder.spec(rule)?;
+    spec.query_type = query_types;
+    Rule::compile(spec, &|tag| rule_sets.get(tag).cloned())
+}

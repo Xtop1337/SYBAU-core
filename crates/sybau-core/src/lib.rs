@@ -6,6 +6,7 @@
 
 pub mod control;
 pub mod dispatch;
+pub mod dns;
 pub mod engine;
 pub mod inbound;
 pub mod logging;

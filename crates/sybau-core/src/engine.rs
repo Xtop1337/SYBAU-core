@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Value};
 use sybau_common::net::ProtectFn;
 use sybau_common::SystemResolver;
@@ -101,6 +101,7 @@ struct Prepared {
     config: Config,
     outbounds: OutboundManager,
     router: crate::route::Router,
+    dns: Option<Arc<crate::dns::DnsResolver>>,
 }
 
 impl Engine {
@@ -147,8 +148,10 @@ impl Engine {
                 config.log.level
             );
         }
+        // Outbounds resolve through the DNS module once it exists.
+        let late = Arc::new(crate::dns::LateResolver::default());
         let ctx = BuildContext {
-            resolver: Arc::new(SystemResolver),
+            resolver: late.clone(),
             protect: self.inner.opts.protect.clone(),
             selections: self.inner.selections.lock().clone(),
         };
@@ -160,10 +163,30 @@ impl Engine {
         let assets = crate::route::Assets::standard(self.inner.opts.config_path.as_deref());
         let router =
             crate::route::Router::build(&config.route, final_tag, &assets, &self.inner.geo)?;
+        let dns = match &config.dns {
+            Some(dns_cfg) => {
+                let dns = Arc::new(
+                    crate::dns::DnsResolver::build(
+                        dns_cfg,
+                        &config.route,
+                        &outbounds,
+                        &assets,
+                        &self.inner.geo,
+                        &router.rule_sets,
+                        self.inner.opts.protect.clone(),
+                    )
+                    .context("dns")?,
+                );
+                late.set(dns.clone());
+                Some(dns)
+            }
+            None => None,
+        };
         Ok(Prepared {
             config,
             outbounds,
             router,
+            dns,
         })
     }
 
@@ -172,6 +195,7 @@ impl Engine {
             config,
             outbounds,
             router,
+            dns,
         } = prepared;
         let mut bound = Vec::with_capacity(config.inbounds.len());
         for (i, ib) in config.inbounds.iter().enumerate() {
@@ -183,7 +207,11 @@ impl Engine {
             outbounds,
             stats: self.inner.stats.clone(),
             router,
-            resolver: Arc::new(SystemResolver),
+            resolver: match &dns {
+                Some(d) => d.clone(),
+                None => Arc::new(SystemResolver),
+            },
+            dns,
         });
         let cancel = CancellationToken::new();
         let tasks = bound
@@ -284,6 +312,18 @@ impl Engine {
                 sybau_config::parse_native(&text)
             }
         }
+    }
+
+    async fn running_dns(&self) -> Result<Arc<crate::dns::DnsResolver>, RpcError> {
+        let guard = self.inner.running.lock().await;
+        let running = guard
+            .as_ref()
+            .ok_or_else(|| RpcError::failed("core is not running"))?;
+        running
+            .dispatcher
+            .dns
+            .clone()
+            .ok_or_else(|| RpcError::failed("no `dns` section in the configuration"))
     }
 
     /// Handles one request of the control API (everything except the
@@ -390,6 +430,32 @@ impl Engine {
                         .collect(),
                 ))
             }
+            "dns.query" => {
+                let name = params
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| RpcError::invalid_params("`name` is required"))?;
+                let qtype = params.get("type").and_then(Value::as_str).unwrap_or("A");
+                let qtype = sybau_dns::message::parse_type(qtype)
+                    .ok_or_else(|| RpcError::invalid_params(format!("unknown type `{qtype}`")))?;
+                let dns = self.running_dns().await?;
+                let reply = dns
+                    .exchange(&sybau_dns::Message::query(rand::random(), name, qtype))
+                    .await;
+                Ok(json!({
+                    "rcode": reply.rcode,
+                    "answers": reply.answers.iter().map(|r| json!({
+                        "name": r.name, "type": r.rtype, "ttl": r.ttl,
+                        "data": match &r.data {
+                            sybau_dns::RecordData::A(ip) => ip.to_string(),
+                            sybau_dns::RecordData::Aaaa(ip) => ip.to_string(),
+                            sybau_dns::RecordData::Cname(n) => n.clone(),
+                            sybau_dns::RecordData::Other(raw) => format!("<{} bytes>", raw.len()),
+                        },
+                    })).collect::<Vec<_>>(),
+                }))
+            }
+            "dns.flush" => Ok(json!({ "flushed": self.running_dns().await?.flush() })),
             "outbounds.select" => {
                 let group = params
                     .get("group")

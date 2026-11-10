@@ -33,6 +33,7 @@ pub struct Dispatcher {
     pub stats: Arc<Stats>,
     pub router: Router,
     pub resolver: Arc<dyn Resolver>,
+    pub dns: Option<Arc<crate::dns::DnsResolver>>,
 }
 
 /// The outbound picked for a session.
@@ -59,6 +60,30 @@ fn usable_host(host: &str) -> bool {
 }
 
 impl Dispatcher {
+    /// Maps a fake-ip target back to its domain. `false` if the target is
+    /// a fake address nobody asked for (stale or forged).
+    fn restore_fake_ip(&self, sess: &mut Session) -> bool {
+        let (Some(dns), Some(ip)) = (&self.dns, sess.target.ip()) else {
+            return true;
+        };
+        let Some(pool) = dns.fakeip() else {
+            return true;
+        };
+        if !pool.is_fake(ip) {
+            return true;
+        }
+        match pool.lookup(ip) {
+            Some(domain) => {
+                sess.target = Target::new(Host::Domain(domain), sess.target.port);
+                true
+            }
+            None => {
+                warn!(target: "sybau::route", "[{}] {} is a fake-ip address with no domain behind it", sess.id, sess.target);
+                false
+            }
+        }
+    }
+
     /// Process lookup for rules that ask for it.
     async fn resolve_process(&self, sess: &mut Session) {
         if !self.router.needs_process {
@@ -191,6 +216,9 @@ impl Dispatcher {
 
     /// Relays one TCP-like stream accepted by an inbound.
     pub async fn dispatch_stream(&self, mut sess: Session, stream: BoxStream) {
+        if !self.restore_fake_ip(&mut sess) {
+            return;
+        }
         let tracker = crate::stats::Counters::detached();
         let mut client = CountedStream::new(stream, tracker);
         let mut first = BytesMut::with_capacity(4096);
@@ -285,6 +313,9 @@ impl Dispatcher {
             };
         let mut pending: Vec<(Vec<u8>, Target)> = vec![(buf[..n].to_vec(), first_dst.clone())];
         sess.target = first_dst.clone();
+        if !self.restore_fake_ip(&mut sess) {
+            return;
+        }
 
         if sess.sniff.enabled {
             let mut sniffer = QuicSniffer::new();

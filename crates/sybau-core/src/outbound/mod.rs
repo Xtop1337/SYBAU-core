@@ -204,6 +204,25 @@ impl OutboundManager {
     }
 }
 
+/// A `direct` outbound outside the configuration, for internal use.
+pub fn internal_direct(
+    resolver: Arc<dyn Resolver>,
+    protect: Option<ProtectFn>,
+) -> Arc<dyn Outbound> {
+    let dialer: Arc<dyn Dialer> = Arc::new(SystemDialer::new(
+        resolver,
+        SocketOpts {
+            protect,
+            ..Default::default()
+        },
+    ));
+    Arc::new(Direct {
+        tag: Arc::from("direct"),
+        dialer,
+        fragment: None,
+    })
+}
+
 /// Connects straight to the destination (or through its detour).
 pub struct Direct {
     tag: Arc<str>,

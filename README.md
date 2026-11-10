@@ -43,7 +43,8 @@
 | Удалённые rule-set с автообновлением, подписки по URL, urltest | не начато |
 | Группы: `selector` (переключение через API, выбор переживает перезагрузку конфига) и `balancer` (`round_robin`, `random`, `fallback`, `least_ping`) с автоматическим обходом упавшего сервера | готово, проверено |
 | Активная проверка задержки по URL (urltest) | не начато: `least_ping` и обход сбоев опираются на реальные соединения |
-| DNS-модуль | в работе (этап 3) |
+| DNS: UDP (с переходом на TCP), TCP, DoT, DoH, `local`, `rcode://`; сервер через любой outbound (`detour`); правила выбора сервера; кеш; hosts; fake-IP; ECS; стратегии `prefer_ipv4`/`ipv4_only` и др. | готово, проверено |
+| DoQ, DoH3 | не начато (этап 6, вместе с QUIC) |
 | Конфиги Xray / sing-box, ссылки, подписки, `convert`, системный прокси Windows | не начато (этап 4) |
 | TUN (Wintun, auto-route, kill switch) | не начато (этап 5) |
 | Hysteria2, Hysteria, TUIC, XHTTP, mKCP | не начато (этап 6) |
@@ -189,6 +190,33 @@ VLESS + Vision + REALITY с отпечатком Chrome и фрагментац�
 }
 ```
 
+DNS (формат sing-box). `direct` и `domain_strategy` резолвят через этот модуль;
+у прокси-протоколов домен по-прежнему уходит на сервер без локального резолва:
+
+```json
+"dns": {
+  "servers": [
+    { "tag": "remote", "address": "https://1.1.1.1/dns-query", "detour": "proxy" },
+    { "tag": "local", "address": "udp://77.88.8.8" },
+    { "tag": "google", "address": "tls://dns.google", "address_resolver": "local" },
+    { "tag": "fake", "address": "fakeip" }
+  ],
+  "rules": [
+    { "geosite": "category-ru", "server": "local" },
+    { "domain_suffix": ["ru", "su"], "server": "local" }
+  ],
+  "final": "remote",
+  "strategy": "prefer_ipv4",
+  "hosts": { "router.lan": ["192.168.1.1"] },
+  "cache": { "enabled": true, "max_entries": 4096, "min_ttl": 30, "max_ttl": 86400 },
+  "client_subnet": "95.84.0.0/24"
+}
+```
+
+Fake-IP отдаётся только приложениям (через `dns.query` и, позже, перехват DNS
+в TUN); запросы самого ядра всегда идут на настоящие серверы. Соединение на
+fake-адрес превращается обратно в домен до роутинга.
+
 Группы outbound:
 
 ```json
@@ -242,6 +270,8 @@ VLESS + Vision + REALITY с отпечатком Chrome и фрагментац�
 | `connections.list` | — | активные соединения |
 | `connections.close` | `{"id": N}` или `{"all": true}` | закрывает соединения |
 | `outbounds.list` | — | outbound-ы, их трафик и состояние групп |
+| `dns.query` | `{"name": "example.com", "type": "A"}` | ответ DNS-модуля |
+| `dns.flush` | — | очищает кеш DNS |
 | `outbounds.select` | `{"group": "sel", "outbound": "b", "close_connections": false}` | переключает selector |
 
 ## Тесты

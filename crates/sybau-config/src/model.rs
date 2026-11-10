@@ -12,6 +12,8 @@ fn default_listen() -> String {
 pub struct Config {
     pub log: LogConfig,
     pub control: ControlConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dns: Option<crate::route::DnsConfig>,
     pub inbounds: Vec<InboundConfig>,
     pub outbounds: Vec<OutboundConfig>,
     pub route: RouteConfig,

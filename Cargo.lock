@@ -1437,24 +1437,48 @@ dependencies = [
  "async-trait",
  "base64",
  "bytes",
+ "h2",
+ "http",
  "httparse",
  "humantime",
  "libc",
  "parking_lot",
  "rand",
+ "rcgen",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2",
  "sybau-common",
  "sybau-config",
+ "sybau-dns",
  "sybau-proto",
  "sybau-route",
  "sybau-tls",
  "sybau-transport",
  "tokio",
+ "tokio-rustls",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "sybau-dns"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "http",
+ "parking_lot",
+ "rand",
+ "sybau-common",
+ "sybau-config",
+ "sybau-transport",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

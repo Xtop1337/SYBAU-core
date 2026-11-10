@@ -10,6 +10,7 @@ sybau-common.workspace = true
 sybau-config.workspace = true
 sybau-proto.workspace = true
 sybau-route.workspace = true
+sybau-dns.workspace = true
 sybau-transport.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
@@ -34,3 +35,9 @@ windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Network
 
 [dev-dependencies]
 sybau-tls.workspace = true
+h2 = "0.4"
+http = "1"
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+sha2 = "0.10"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }

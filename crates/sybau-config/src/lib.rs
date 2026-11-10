@@ -76,6 +76,42 @@ impl Config {
                 bail!("route.final `{f}` does not exist");
             }
         }
+        if let Some(dns) = &self.dns {
+            let mut servers = std::collections::HashSet::new();
+            for srv in &dns.servers {
+                if !servers.insert(srv.tag.as_str()) {
+                    bail!("duplicate DNS server tag `{}`", srv.tag);
+                }
+                if let Some(d) = &srv.detour {
+                    if !tags.contains(d.as_str()) {
+                        bail!("DNS server `{}`: detour `{d}` does not exist", srv.tag);
+                    }
+                }
+            }
+            for srv in &dns.servers {
+                if let Some(r) = &srv.address_resolver {
+                    if !servers.contains(r.as_str()) || r == &srv.tag {
+                        bail!(
+                            "DNS server `{}`: address_resolver `{r}` is not another DNS server",
+                            srv.tag
+                        );
+                    }
+                }
+            }
+            if dns.servers.is_empty() {
+                bail!("dns.servers is empty");
+            }
+            if let Some(f) = &dns.r#final {
+                if !servers.contains(f.as_str()) {
+                    bail!("dns.final `{f}` does not exist");
+                }
+            }
+            for (i, rule) in dns.rules.iter().enumerate() {
+                if !servers.contains(rule.server.as_str()) {
+                    bail!("dns.rules[{i}]: server `{}` does not exist", rule.server);
+                }
+            }
+        }
         let mut sets = std::collections::HashSet::new();
         for rs in &self.route.rule_set {
             if !sets.insert(rs.tag.as_str()) {
