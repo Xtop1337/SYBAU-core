@@ -1415,6 +1415,7 @@ dependencies = [
  "anyhow",
  "clap",
  "libc",
+ "serde",
  "serde_json",
  "sybau-config",
  "sybau-core",

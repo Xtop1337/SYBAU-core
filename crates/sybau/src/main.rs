@@ -1,6 +1,7 @@
 //! `sybau` / `sybau.exe` — SYBAU-CORE as a standalone process.
 
 mod single_instance;
+mod sysproxy;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -65,6 +66,14 @@ enum Command {
         /// A link, or a file with links / subscription content; `-` reads stdin.
         source: String,
     },
+    /// Internal: restores the system proxy if the core with `pid` dies.
+    #[command(hide = true)]
+    SysproxyGuard {
+        #[arg(long)]
+        pid: u32,
+        #[arg(long)]
+        profile: String,
+    },
     /// Send a request to a running core, e.g. `sybau ctl stats.get`.
     Ctl {
         /// Method, e.g. `core.status`, `connections.list`, `core.reload`.
@@ -116,6 +125,11 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 cfg.inbounds.len(),
                 cfg.outbounds.len()
             );
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::SysproxyGuard { pid, profile } => {
+            check_profile(&profile)?;
+            sysproxy::guard(pid, &profile)?;
             Ok(ExitCode::SUCCESS)
         }
         Command::Convert {
@@ -228,6 +242,14 @@ fn check_profile(profile: &str) -> Result<()> {
 
 async fn serve(cfg: Config, path: PathBuf, profile: String) -> Result<()> {
     let control_cfg = cfg.control.clone();
+    // Settings left by a run that was killed together with its guard.
+    if cfg!(windows) {
+        sysproxy::recover(&profile);
+    }
+    let system_proxy_cfg = cfg.system_proxy.clone().filter(|s| s.enabled);
+    let system_proxy_server = system_proxy_cfg
+        .as_ref()
+        .map(|sp| sysproxy::proxy_server(&cfg, sp));
     let engine = Engine::new(EngineOptions {
         profile: profile.clone(),
         config_path: Some(path),
@@ -235,6 +257,30 @@ async fn serve(cfg: Config, path: PathBuf, profile: String) -> Result<()> {
         protect: None,
     });
     engine.start(cfg).await?;
+    // Enabled only once the inbounds listen; restored when dropped.
+    let _system_proxy = match (system_proxy_cfg, system_proxy_server) {
+        (Some(sp), Some(Some(server))) if cfg!(windows) => {
+            match sysproxy::SystemProxy::enable(&profile, &server, &sp.bypass) {
+                Ok(p) => {
+                    tracing::info!(target: "sybau::core", "system proxy set to {server}");
+                    Some(p)
+                }
+                Err(e) => {
+                    tracing::warn!(target: "sybau::core", "cannot set the system proxy: {e:#}");
+                    None
+                }
+            }
+        }
+        (Some(_), Some(None)) => {
+            tracing::warn!(target: "sybau::core", "system_proxy: no mixed or http inbound to announce; set system_proxy.server");
+            None
+        }
+        (Some(_), _) => {
+            tracing::warn!(target: "sybau::core", "system_proxy is only supported on Windows");
+            None
+        }
+        _ => None,
+    };
 
     let control_cancel = engine.stop_token().child_token();
     let control_task = if control_cfg.enabled {

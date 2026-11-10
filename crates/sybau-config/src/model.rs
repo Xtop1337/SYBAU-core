@@ -17,6 +17,22 @@ pub struct Config {
     pub inbounds: Vec<InboundConfig>,
     pub outbounds: Vec<OutboundConfig>,
     pub route: RouteConfig,
+    /// Windows system proxy, set while `sybau.exe` runs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_proxy: Option<SystemProxyConfig>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct SystemProxyConfig {
+    pub enabled: bool,
+    /// `host:port` to announce. Default: the first mixed or http inbound.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
+    /// Hosts that bypass the proxy (WinINet syntax). Default: local
+    /// and private addresses.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub bypass: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

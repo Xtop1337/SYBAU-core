@@ -52,4 +52,36 @@ finally {
     if (-not $core.HasExited) { $core.Kill() }
     if (-not $origin.HasExited) { $origin.Kill() }
 }
+# --- System proxy: set while running, restored on stop and after a crash ---
+$key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+Set-ItemProperty $key -Name ProxyEnable -Value 0
+Set-ItemProperty $key -Name ProxyServer -Value "before.example:1"
+$spConfig = Join-Path $work "sysproxy.json"
+'{"inbounds":[{"type":"mixed","port":20831}],"system_proxy":{"enabled":true}}' | Set-Content -Encoding ascii $spConfig
+
+function Expect-Proxy($enable, $server, $what) {
+    $p = Get-ItemProperty $key
+    if ($p.ProxyEnable -ne $enable -or $p.ProxyServer -ne $server) {
+        Fail "$what: ProxyEnable=$($p.ProxyEnable) ProxyServer=$($p.ProxyServer), expected $enable / $server"
+    }
+}
+
+$core = Start-Process $Exe -ArgumentList "run","-c",$spConfig,"--profile","sp" -PassThru -WindowStyle Hidden `
+    -RedirectStandardError (Join-Path $work "sp.log")
+Start-Sleep -Seconds 2
+Expect-Proxy 1 "127.0.0.1:20831" "while running"
+& $Exe ctl core.stop --profile sp | Out-Null
+if (-not $core.WaitForExit(5000)) { Fail "core did not exit" }
+Expect-Proxy 0 "before.example:1" "after a clean stop"
+Write-Host "system proxy restored on stop OK"
+
+$core = Start-Process $Exe -ArgumentList "run","-c",$spConfig,"--profile","sp" -PassThru -WindowStyle Hidden `
+    -RedirectStandardError (Join-Path $work "sp2.log")
+Start-Sleep -Seconds 2
+Expect-Proxy 1 "127.0.0.1:20831" "while running again"
+Stop-Process -Id $core.Id -Force
+Start-Sleep -Seconds 3
+Expect-Proxy 0 "before.example:1" "after the core was killed (guard)"
+Write-Host "system proxy restored after a crash OK"
+
 Write-Host "Windows smoke test passed"
