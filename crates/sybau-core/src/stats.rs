@@ -150,6 +150,16 @@ pub struct Counters {
 }
 
 impl Counters {
+    /// Counters that belong to no connection yet (used while sniffing).
+    pub fn detached() -> Self {
+        let stats = Arc::new(Stats::default());
+        Self {
+            conn: Arc::new(Counter::default()),
+            outbound: Arc::new(Counter::default()),
+            stats,
+        }
+    }
+
     #[inline]
     pub fn add_up(&self, n: usize) {
         let n = n as u64;
@@ -190,6 +200,10 @@ pub struct CountedStream<S> {
 impl<S> CountedStream<S> {
     pub fn new(inner: S, counters: Counters) -> Self {
         Self { inner, counters }
+    }
+
+    pub fn set_counters(&mut self, counters: Counters) {
+        self.counters = counters;
     }
 }
 

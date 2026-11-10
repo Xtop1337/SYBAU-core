@@ -31,6 +31,15 @@ pub struct LocalProxy {
 }
 
 impl LocalProxy {
+    /// Sniffing settings for sessions of this inbound.
+    pub fn sniff(&self) -> sybau_common::SniffOptions {
+        sybau_common::SniffOptions {
+            enabled: self.cfg.sniff.enabled,
+            override_destination: self.cfg.sniff.override_destination,
+            timeout: std::time::Duration::from_millis(self.cfg.sniff.timeout_ms.clamp(10, 10_000)),
+        }
+    }
+
     pub fn new(tag: Arc<str>, mode: Mode, cfg: LocalProxyInbound) -> Self {
         Self { tag, mode, cfg }
     }

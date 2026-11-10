@@ -81,6 +81,8 @@ struct Running {
 
 struct Inner {
     opts: EngineOptions,
+    /// Parsed geo files, shared by reloads.
+    geo: sybau_route::geodata::GeoCache,
     stats: Arc<Stats>,
     running: tokio::sync::Mutex<Option<Running>>,
     stop: CancellationToken,
@@ -96,7 +98,7 @@ pub struct Engine {
 struct Prepared {
     config: Config,
     outbounds: OutboundManager,
-    final_tag: Arc<str>,
+    router: crate::route::Router,
 }
 
 impl Engine {
@@ -104,6 +106,7 @@ impl Engine {
         Self {
             inner: Arc::new(Inner {
                 opts,
+                geo: Default::default(),
                 stats: Arc::new(Stats::default()),
                 running: tokio::sync::Mutex::new(None),
                 stop: CancellationToken::new(),
@@ -150,10 +153,13 @@ impl Engine {
             Some(tag) => Arc::from(tag.as_str()),
             None => outbounds.tags()[0].clone(),
         };
+        let assets = crate::route::Assets::standard(self.inner.opts.config_path.as_deref());
+        let router =
+            crate::route::Router::build(&config.route, final_tag, &assets, &self.inner.geo)?;
         Ok(Prepared {
             config,
             outbounds,
-            final_tag,
+            router,
         })
     }
 
@@ -161,17 +167,19 @@ impl Engine {
         let Prepared {
             config,
             outbounds,
-            final_tag,
+            router,
         } = prepared;
         let mut bound = Vec::with_capacity(config.inbounds.len());
         for (i, ib) in config.inbounds.iter().enumerate() {
             bound.push(BoundInbound::bind(i, ib).await?);
         }
         logging::set_level(&config.log.level);
+        let rules = router.rule_count();
         let dispatcher = Arc::new(Dispatcher {
             outbounds,
             stats: self.inner.stats.clone(),
-            final_tag,
+            router,
+            resolver: Arc::new(SystemResolver),
         });
         let cancel = CancellationToken::new();
         let tasks = bound
@@ -180,8 +188,8 @@ impl Engine {
             .collect();
         info!(
             target: "sybau::core",
-            "{} {} started: {} inbound(s), {} outbound(s), final `{}`",
-            PRODUCT, VERSION, config.inbounds.len(), config.outbounds.len(), dispatcher.final_tag
+            "{} {} started: {} inbound(s), {} outbound(s), {} rule(s), final `{}`",
+            PRODUCT, VERSION, config.inbounds.len(), config.outbounds.len(), rules, dispatcher.router.final_tag
         );
         Ok(Running {
             config,
@@ -369,7 +377,7 @@ impl Engine {
                         .filter_map(|tag| d.outbounds.get(tag))
                         .map(|o| {
                             let (up, down) = self.inner.stats.outbound_counter(&Arc::from(o.tag())).snapshot();
-                            json!({ "tag": o.tag(), "type": o.kind(), "final": o.tag() == &*d.final_tag, "up": up, "down": down })
+                            json!({ "tag": o.tag(), "type": o.kind(), "final": o.tag() == &*d.router.final_tag, "up": up, "down": down })
                         })
                         .collect(),
                 ))

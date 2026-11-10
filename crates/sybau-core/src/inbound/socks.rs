@@ -97,6 +97,7 @@ where
         CMD_CONNECT => {
             s.write_all(&reply(REP_OK)).await?;
             let mut sess = Session::new(Network::Tcp, proxy.tag.clone(), Some(peer), target);
+            sess.sniff = proxy.sniff();
             sess.user = user;
             dispatcher.dispatch_stream(sess, Box::new(s)).await;
             Ok(())
@@ -114,6 +115,7 @@ where
                 scratch: tokio::sync::Mutex::new(vec![0u8; 65535]),
             });
             let mut sess = Session::new(Network::Udp, proxy.tag.clone(), Some(peer), bound);
+            sess.sniff = proxy.sniff();
             sess.user = user;
             // The association lives exactly as long as the TCP connection.
             tokio::select! {
@@ -227,7 +229,8 @@ where
         return Err(proto_err("SOCKS4 request rejected"));
     }
     s.write_all(&[0, 0x5a, 0, 0, 0, 0, 0, 0]).await?;
-    let sess = Session::new(Network::Tcp, proxy.tag.clone(), Some(peer), target);
+    let mut sess = Session::new(Network::Tcp, proxy.tag.clone(), Some(peer), target);
+    sess.sniff = proxy.sniff();
     dispatcher.dispatch_stream(sess, Box::new(s)).await;
     Ok(())
 }

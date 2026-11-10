@@ -186,6 +186,7 @@ where
             s.write_all(b"HTTP/1.1 200 Connection established\r\n\r\n")
                 .await?;
             let mut sess = Session::new(Network::Tcp, proxy.tag.clone(), Some(peer), target);
+            sess.sniff = proxy.sniff();
             sess.user = user;
             dispatcher
                 .dispatch_stream(sess, Box::new(PrefixedStream::new(leftover, s)))
@@ -194,6 +195,7 @@ where
         Action::Forward { target, mut head } => {
             head.extend_from_slice(&leftover);
             let mut sess = Session::new(Network::Tcp, proxy.tag.clone(), Some(peer), target);
+            sess.sniff = proxy.sniff();
             sess.user = user;
             dispatcher
                 .dispatch_stream(sess, Box::new(PrefixedStream::new(head, s)))

@@ -19,6 +19,16 @@ impl Network {
     }
 }
 
+/// Protocol sniffing requested by the inbound that accepted a flow.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SniffOptions {
+    pub enabled: bool,
+    /// Replace an IP target with the sniffed domain.
+    pub override_destination: bool,
+    /// How long to wait for the client's first bytes.
+    pub timeout: std::time::Duration,
+}
+
 /// Everything known about one proxied flow; filled by the inbound, enriched
 /// by sniffing and consumed by the router and the outbound.
 #[derive(Clone, Debug)]
@@ -36,6 +46,9 @@ pub struct Session {
     pub user: Option<Arc<str>>,
     /// Full path of the local process owning the flow, if resolved.
     pub process_path: Option<Arc<str>>,
+    /// Executable name of that process.
+    pub process_name: Option<Arc<str>>,
+    pub sniff: SniffOptions,
 }
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -57,6 +70,8 @@ impl Session {
             protocol: None,
             user: None,
             process_path: None,
+            process_name: None,
+            sniff: SniffOptions::default(),
         }
     }
 }

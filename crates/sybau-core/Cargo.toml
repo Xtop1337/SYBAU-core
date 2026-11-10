@@ -9,6 +9,7 @@ license.workspace = true
 sybau-common.workspace = true
 sybau-config.workspace = true
 sybau-proto.workspace = true
+sybau-route.workspace = true
 sybau-transport.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
@@ -29,3 +30,6 @@ libc.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_System_Threading"] }
+
+[dev-dependencies]
+sybau-tls.workspace = true

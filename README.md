@@ -36,7 +36,12 @@
 | Свой TLS 1.3 клиент: X25519, P-256, X25519MLKEM768, HelloRetryRequest, KeyUpdate, сжатые сертификаты | готово, проверено (rustls, Go TLS) |
 | Отпечатки `360` и `android` (предлагают только TLS 1.2), TLS 1.2 с отпечатком | не начато |
 | Mux.Cool, VMess `authenticated_length`, REALITY spiderX, ML-DSA-проверка REALITY | не начато |
-| Роутинг по правилам, geosite/geoip, sniffing, DNS | не начато (этап 3) |
+| Роутинг: домен (точно, суффикс, ключевое слово, regex), IP/CIDR, порт, сеть, протокол, inbound, пользователь, процесс, логические правила `and`/`or`, `invert`, действие `reject` | готово, проверено |
+| `geosite.dat`/`geoip.dat` (Xray) и rule-set `.srs` v1–v5 / `.json` (sing-box), локальные и inline | готово, проверено на эталонных данных Xray и sing-box |
+| Sniffing: TLS SNI, HTTP Host, QUIC SNI, BitTorrent, DNS; `override_destination` | готово, проверено |
+| `domain_strategy`: `as_is`, `ip_if_non_match`, `ip_on_demand` | готово, проверено (резолвер пока системный) |
+| Удалённые rule-set с автообновлением, подписки по URL, urltest | не начато |
+| Балансировщики, selector, DNS-модуль | в работе (этап 3) |
 | Конфиги Xray / sing-box, ссылки, подписки, `convert`, системный прокси Windows | не начато (этап 4) |
 | TUN (Wintun, auto-route, kill switch) | не начато (этап 5) |
 | Hysteria2, Hysteria, TUIC, XHTTP, mKCP | не начато (этап 6) |
@@ -50,7 +55,6 @@
 
 Известные ограничения текущего этапа:
 
-- правила роутинга ещё нет: весь трафик идёт в `route.final`;
 - UDP у VLESS и VMess открывает отдельный поток на каждый адрес назначения
   (XUDP появится на этапе 2);
 - HTTP/2 и gRPC соединения не посылают keepalive-ping: оборванное соединение
@@ -153,6 +157,41 @@ VLESS + Vision + REALITY с отпечатком Chrome и фрагментац�
   }
 }
 ```
+
+Роутинг (формат sing-box; `geosite`/`geoip` читаются из файлов Xray):
+
+```json
+{
+  "inbounds": [
+    { "type": "mixed", "tag": "in", "port": 2080,
+      "sniff": { "enabled": true, "override_destination": false, "timeout_ms": 300 } }
+  ],
+  "route": {
+    "final": "proxy",
+    "geosite": "geosite.dat",
+    "geoip": "geoip.dat",
+    "domain_strategy": "ip_if_non_match",
+    "rule_set": [
+      { "tag": "ads", "type": "local", "path": "geosite-category-ads.srs" }
+    ],
+    "rules": [
+      { "rule_set": "ads", "action": "reject" },
+      { "protocol": "bittorrent", "outbound": "direct" },
+      { "process_name": ["Discord.exe"], "outbound": "proxy" },
+      { "process_name": ["cs2.exe", "dota2.exe"], "outbound": "direct" },
+      { "geosite": ["category-ru", "private"], "geoip": ["ru", "private"], "outbound": "direct" },
+      { "type": "logical", "mode": "and",
+        "rules": [{ "network": "udp" }, { "port": 443 }], "action": "reject" }
+    ]
+  }
+}
+```
+
+Внутри правила условия одной группы объединяются через «или»
+(`domain`/`domain_suffix`/`domain_keyword`/`domain_regex`/`geosite`/`ip_cidr`/`geoip`/`rule_set`),
+а разные группы — через «и» (порт, сеть, протокол, процесс и т.д.), как в sing-box.
+`geosite.dat`/`geoip.dat` ищутся рядом с конфигом, рядом с `sybau.exe`, в
+`SYBAU_ASSET_DIR` и `XRAY_LOCATION_ASSET`.
 
 Команды:
 

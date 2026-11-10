@@ -1446,6 +1446,8 @@ dependencies = [
  "sybau-common",
  "sybau-config",
  "sybau-proto",
+ "sybau-route",
+ "sybau-tls",
  "sybau-transport",
  "tokio",
  "tokio-util",

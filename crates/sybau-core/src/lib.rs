@@ -12,6 +12,7 @@ pub mod logging;
 pub mod outbound;
 pub mod process;
 pub mod relay;
+pub mod route;
 pub mod stats;
 
 pub use engine::{Engine, EngineOptions, RpcError};
