@@ -214,8 +214,10 @@ mod imp {
             .filter(|(k, _)| *k == REG_SZ)
             .map(|(_, d)| {
                 let units: Vec<u16> = d
-                    .chunks_exact(2)
-                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|c| u16::from_le_bytes(*c))
                     .collect();
                 String::from_utf16_lossy(&units)
                     .trim_end_matches('\0')

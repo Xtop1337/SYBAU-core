@@ -406,7 +406,7 @@ impl ClientHello {
                 }
                 EXT_SUPPORTED_GROUPS => {
                     let mut d = data.to_vec();
-                    for pair in d[2..].chunks_exact_mut(2) {
+                    for pair in d[2..].as_chunks_mut::<2>().0 {
                         let v = u16::from_be_bytes([pair[0], pair[1]]);
                         if is_grease(v) {
                             pair.copy_from_slice(&g.group.to_be_bytes());
@@ -418,7 +418,7 @@ impl ClientHello {
                 }
                 EXT_SUPPORTED_VERSIONS => {
                     let mut d = data.to_vec();
-                    for pair in d[1..].chunks_exact_mut(2) {
+                    for pair in d[1..].as_chunks_mut::<2>().0 {
                         if is_grease(u16::from_be_bytes([pair[0], pair[1]])) {
                             pair.copy_from_slice(&g.version.to_be_bytes());
                         }
@@ -485,7 +485,7 @@ impl ClientHello {
                 EXT_PADDING => padding_index = Some(extensions.len()),
                 EXT_PRE_SHARED_KEY => {}
                 27 => {
-                    for pair in data[1..].chunks_exact(2) {
+                    for pair in data[1..].as_chunks::<2>().0 {
                         self.cert_compression
                             .push(u16::from_be_bytes([pair[0], pair[1]]));
                     }
@@ -568,7 +568,9 @@ pub fn shape(raw: &[u8]) -> Option<HelloShape> {
     pos += 2;
     let cipher_suites = body
         .get(pos..pos + cs_len)?
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|p| norm(u16::from_be_bytes([p[0], p[1]])))
         .collect();
     pos += cs_len;
