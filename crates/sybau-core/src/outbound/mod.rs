@@ -151,6 +151,12 @@ impl OutboundManager {
             OutboundKind::Shadowsocks(c) => {
                 shadowsocks::Shadowsocks::new(tag.clone(), c, via(detour)).map(|o| Arc::new(o) as _)
             }
+            OutboundKind::Hysteria2(_) | OutboundKind::Tuic(_) | OutboundKind::Wireguard(_) => {
+                Err(anyhow!(
+                    "{} outbounds are not implemented yet in this version of SYBAU-CORE",
+                    cfg.kind.type_name()
+                ))
+            }
             OutboundKind::Selector(g) => {
                 if cfg.detour.is_some() {
                     bail!("outbound `{}`: groups cannot have a detour", cfg.tag);

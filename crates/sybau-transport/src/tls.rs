@@ -63,6 +63,10 @@ impl TlsClient {
             &cfg.pinned_cert_sha256,
             &cfg.pinned_cert_chain_sha256,
         )?;
+        let verify = VerifyOptions {
+            verify_names: cfg.verify_names.clone(),
+            ..verify
+        };
 
         if cfg.fingerprint.is_none() && cfg.reality.is_none() && !raw_switch {
             let mut config = ClientConfig::builder_with_provider(provider())

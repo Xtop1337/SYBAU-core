@@ -20,4 +20,7 @@ COPY --from=build /src/target/release/sybau /usr/local/bin/sybau
 COPY tests/interop/run.py /interop/run.py
 ENV XRAY_BIN=/usr/local/bin/xray SINGBOX_BIN=/usr/local/bin/sing-box SYBAU_BIN=/usr/local/bin/sybau
 RUN xray version && sing-box version && sybau --version
-CMD ["python3", "/interop/run.py"]
+COPY tests/interop/client_formats.py /interop/client_formats.py
+# The client config is written natively, then as Xray config, sing-box
+# config and share link (each checked by the real program, converted by sybau).
+CMD ["sh", "-c", "set -e; for f in native xray sing-box link; do echo \"== client format: $f\"; python3 /interop/run.py --client-format $f; done"]

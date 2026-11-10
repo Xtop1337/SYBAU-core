@@ -4,12 +4,21 @@
 //! `log / control / inbounds / outbounds / route`. Foreign formats
 //! (Xray, sing-box) are translated into this model by importer modules.
 
+pub mod import;
+pub mod links;
 pub mod model;
 pub mod route;
+pub mod subscription;
 
 pub use model::*;
 
 use anyhow::{bail, Context, Result};
+
+/// Parses a config of any supported format (SYBAU, Xray, sing-box) and
+/// returns it with notes about settings that were not carried over.
+pub fn parse_any(text: &str) -> Result<import::Imported> {
+    import::load(text, None)
+}
 
 /// Parses a native SYBAU config and validates cross references.
 pub fn parse_native(text: &str) -> Result<Config> {

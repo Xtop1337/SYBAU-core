@@ -146,8 +146,13 @@ pub unsafe extern "C" fn sybau_start(
             ));
         }
         logging::init(false);
-        let config = sybau_config::parse_native(text)
+        // Xray and sing-box configs are accepted as well.
+        let imported = sybau_config::parse_any(text)
             .map_err(|e| (SYBAU_ERR_START_FAILED, format!("{e:#}")))?;
+        for w in &imported.warnings {
+            tracing::warn!(target: "sybau::config", "{w}");
+        }
+        let config = imported.config;
         let protect: Option<sybau_common::net::ProtectFn> = Some(Arc::new(|fd: i64| {
             let cb = *PROTECT_CB.lock();
             match cb {

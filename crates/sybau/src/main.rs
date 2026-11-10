@@ -42,10 +42,28 @@ enum Command {
         #[arg(long)]
         log_level: Option<String>,
     },
-    /// Validate a config file without starting anything.
+    /// Validate a config file (SYBAU, Xray or sing-box) without starting anything.
     Check {
         #[arg(short, long)]
         config: PathBuf,
+    },
+    /// Convert an Xray or sing-box config to the SYBAU format.
+    Convert {
+        /// Config file to convert.
+        input: PathBuf,
+        /// `xray`, `sing-box` or `auto`.
+        #[arg(long, default_value = "auto")]
+        from: String,
+        /// Write here instead of standard output.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Turn share links or subscription content into outbounds
+    /// (`vless://`, `vmess://`, `trojan://`, `ss://`, `hy2://`, `tuic://`,
+    /// `wireguard://`, base64 lists, Clash YAML, sing-box JSON).
+    Import {
+        /// A link, or a file with links / subscription content; `-` reads stdin.
+        source: String,
     },
     /// Send a request to a running core, e.g. `sybau ctl stats.get`.
     Ctl {
@@ -64,10 +82,17 @@ enum Command {
     },
 }
 
+/// Loads a config of any supported format; notes about settings that
+/// could not be converted go to the log.
 fn load_config(path: &Path) -> Result<Config> {
     let text =
         std::fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))?;
-    sybau_config::parse_native(&text).with_context(|| format!("in {}", path.display()))
+    let imported =
+        sybau_config::parse_any(&text).with_context(|| format!("in {}", path.display()))?;
+    for w in &imported.warnings {
+        eprintln!("warning: {w}");
+    }
+    Ok(imported.config)
 }
 
 fn main() -> ExitCode {
@@ -91,6 +116,45 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 cfg.inbounds.len(),
                 cfg.outbounds.len()
             );
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Convert {
+            input,
+            from,
+            output,
+        } => {
+            let text = std::fs::read_to_string(&input)
+                .with_context(|| format!("cannot read {}", input.display()))?;
+            let format = match from.as_str() {
+                "auto" => None,
+                other => Some(sybau_config::import::Format::parse(other)?),
+            };
+            let imported = sybau_config::import::load(&text, format)
+                .with_context(|| format!("in {}", input.display()))?;
+            for w in &imported.warnings {
+                eprintln!("warning: {w}");
+            }
+            let json = imported.config.to_json_pretty();
+            match output {
+                Some(path) => std::fs::write(&path, json + "\n")
+                    .with_context(|| format!("cannot write {}", path.display()))?,
+                None => println!("{json}"),
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Import { source } => {
+            let text = if source == "-" {
+                std::io::read_to_string(std::io::stdin())?
+            } else if source.contains("://") {
+                source.clone()
+            } else {
+                std::fs::read_to_string(&source).with_context(|| format!("cannot read {source}"))?
+            };
+            let parsed = sybau_config::subscription::parse(&text)?;
+            for w in &parsed.warnings {
+                eprintln!("warning: {w}");
+            }
+            println!("{}", serde_json::to_string_pretty(&parsed.outbounds)?);
             Ok(ExitCode::SUCCESS)
         }
         Command::Ctl {

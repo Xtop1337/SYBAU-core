@@ -188,6 +188,12 @@ pub enum OutboundKind {
     Vmess(VmessOutbound),
     Trojan(TrojanOutbound),
     Shadowsocks(ShadowsocksOutbound),
+    /// Parsed and converted; the protocol itself arrives in stage 6.
+    Hysteria2(Hysteria2Outbound),
+    /// Parsed and converted; the protocol itself arrives in stage 6.
+    Tuic(TuicOutbound),
+    /// Parsed and converted; the protocol itself arrives in stage 8.
+    Wireguard(WireguardOutbound),
     /// Group whose active member is chosen by hand (control API).
     Selector(SelectorOutbound),
     /// Group that spreads or fails over connections between members.
@@ -228,6 +234,9 @@ impl OutboundKind {
             OutboundKind::Vmess(_) => "vmess",
             OutboundKind::Trojan(_) => "trojan",
             OutboundKind::Shadowsocks(_) => "shadowsocks",
+            OutboundKind::Hysteria2(_) => "hysteria2",
+            OutboundKind::Tuic(_) => "tuic",
+            OutboundKind::Wireguard(_) => "wireguard",
             OutboundKind::Selector(_) => "selector",
             OutboundKind::Balancer(_) => "balancer",
         }
@@ -331,6 +340,67 @@ pub struct ShadowsocksOutbound {
     pub password: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Hysteria2Outbound {
+    pub server: String,
+    pub port: u16,
+    pub password: String,
+    /// Port hopping ranges, e.g. `20000-30000`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub server_ports: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hop_interval: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub up_mbps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub down_mbps: Option<u32>,
+    /// Salamander obfuscation password.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub obfs_password: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls: Option<TlsConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TuicOutbound {
+    pub server: String,
+    pub port: u16,
+    pub uuid: String,
+    pub password: String,
+    /// `cubic`, `new_reno` or `bbr`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub congestion_control: Option<String>,
+    /// `native` or `quic`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub udp_relay_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub zero_rtt_handshake: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls: Option<TlsConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WireguardOutbound {
+    pub server: String,
+    pub port: u16,
+    /// Base64 keys.
+    pub private_key: String,
+    pub peer_public_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pre_shared_key: Option<String>,
+    /// Interface addresses, e.g. `10.0.0.2/32`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_address: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mtu: Option<u16>,
+    /// Cloudflare WARP client id bytes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reserved: Vec<u8>,
+}
+
 fn default_auto() -> String {
     "auto".to_string()
 }
@@ -349,15 +419,20 @@ pub struct TlsConfig {
     /// Accept any certificate. Dangerous: allows interception.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub insecure: bool,
-    /// SHA-256 of the server (leaf) certificate, hex or base64. A match is
-    /// sufficient: the CA chain is not checked, so self-signed
-    /// certificates can be pinned.
+    /// SHA-256 of a certificate, hex or base64 (Xray `pinnedPeerCertSha256`).
+    /// A pinned leaf is accepted without CA checks, so self-signed
+    /// certificates can be pinned; a pinned CA in the chain becomes the
+    /// only trusted root.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pinned_cert_sha256: Vec<String>,
     /// Xray `pinnedPeerCertificateChainSha256`: base64 hash of the whole
     /// chain, checked in addition to normal verification.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pinned_cert_chain_sha256: Vec<String>,
+    /// Check the certificate against these names instead of the SNI
+    /// (Xray `verifyPeerCertByName`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub verify_names: Vec<String>,
     /// Imitate the ClientHello of a browser (uTLS): `chrome`, `firefox`,
     /// `safari`, `ios`, `android`, `edge`, `360`, `qq`, `random`,
     /// `randomized`. Requires a TLS 1.3 server.
@@ -406,6 +481,7 @@ impl Default for TlsConfig {
             insecure: false,
             pinned_cert_sha256: Vec::new(),
             pinned_cert_chain_sha256: Vec::new(),
+            verify_names: Vec::new(),
             fingerprint: None,
             reality: None,
             fragment: None,

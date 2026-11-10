@@ -432,3 +432,28 @@ async fn detour_chain_and_cycle_detection() {
     let err = looped.start(cfg).await.unwrap_err();
     assert!(format!("{err:#}").contains("outbound cycle"), "{err:#}");
 }
+
+#[tokio::test]
+async fn control_api_converts_configs_and_subscriptions() {
+    let engine = start(json!({})).await;
+    let sub = "vless://id@1.2.3.4:443?security=tls&sni=a.example#A\ntrojan://pw@b.example:443#B";
+    let r = engine
+        .call("subscriptions.parse", &json!({"content": sub}))
+        .await
+        .unwrap();
+    assert_eq!(r["outbounds"].as_array().unwrap().len(), 2);
+    assert_eq!(r["outbounds"][1]["tag"], "B");
+
+    let xray =
+        r#"{"outbounds": [{"protocol": "freedom", "tag": "direct"}], "routing": {"rules": []}}"#;
+    let r = engine
+        .call("config.convert", &json!({"text": xray}))
+        .await
+        .unwrap();
+    assert_eq!(r["config"]["outbounds"][0]["type"], "direct");
+    assert!(engine
+        .call("config.convert", &json!({"text": "{", "from": "xray"}))
+        .await
+        .is_err());
+    engine.stop().await;
+}

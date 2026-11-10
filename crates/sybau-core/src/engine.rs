@@ -309,7 +309,11 @@ impl Engine {
             None => {
                 let text = std::fs::read_to_string(path)
                     .map_err(|e| anyhow!("cannot read {}: {e}", path.display()))?;
-                sybau_config::parse_native(&text)
+                let imported = sybau_config::parse_any(&text)?;
+                for w in &imported.warnings {
+                    tracing::warn!(target: "sybau::config", "{w}");
+                }
+                Ok(imported.config)
             }
         }
     }
@@ -454,6 +458,31 @@ impl Engine {
                         },
                     })).collect::<Vec<_>>(),
                 }))
+            }
+            "subscriptions.parse" => {
+                // The application downloads the subscription and hands its content over.
+                let content = params
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| RpcError::invalid_params("`content` is required"))?;
+                let parsed = sybau_config::subscription::parse(content)
+                    .map_err(|e| RpcError::failed(format!("{e:#}")))?;
+                Ok(json!({ "outbounds": parsed.outbounds, "warnings": parsed.warnings }))
+            }
+            "config.convert" => {
+                let text = params
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| RpcError::invalid_params("`text` is required"))?;
+                let format = match params.get("from").and_then(Value::as_str) {
+                    None | Some("auto") => None,
+                    Some(f) => Some(
+                        sybau_config::import::Format::parse(f).map_err(RpcError::invalid_params)?,
+                    ),
+                };
+                let imported = sybau_config::import::load(text, format)
+                    .map_err(|e| RpcError::failed(format!("{e:#}")))?;
+                Ok(json!({ "config": imported.config, "warnings": imported.warnings }))
             }
             "dns.flush" => Ok(json!({ "flushed": self.running_dns().await?.flush() })),
             "outbounds.select" => {

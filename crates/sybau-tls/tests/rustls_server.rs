@@ -394,3 +394,85 @@ async fn raw_switch_bypasses_the_record_layer() {
     tls.flush().await.unwrap();
     assert_eq!(&server.await.unwrap(), b"RAW-FROM-CLIENT");
 }
+
+/// Xray `pinnedPeerCertSha256` semantics: a pinned CA in the chain is the
+/// only trusted root; `verify_names` replaces the SNI for the name check.
+#[tokio::test]
+async fn pinned_ca_and_verify_names() {
+    let ca_key = rcgen::KeyPair::generate().unwrap();
+    let mut ca_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+    ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+    ca_params
+        .distinguished_name
+        .push(rcgen::DnType::CommonName, "Test CA");
+    let ca = ca_params.self_signed(&ca_key).unwrap();
+    let leaf_key = rcgen::KeyPair::generate().unwrap();
+    let leaf = rcgen::CertificateParams::new(vec!["real.test".to_string()])
+        .unwrap()
+        .signed_by(&leaf_key, &ca, &ca_key)
+        .unwrap();
+    let ca_pin: [u8; 32] = Sha256::digest(ca.der().as_ref()).into();
+
+    let server = || {
+        let mut cfg = ServerConfig::builder_with_provider(provider_with(None, None))
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![leaf.der().clone(), ca.der().clone()],
+                PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(leaf_key.serialize_der())),
+            )
+            .unwrap();
+        cfg.alpn_protocols = vec![b"h2".to_vec()];
+        spawn_echo(cfg).0
+    };
+    let client = |sni: &str, opts: VerifyOptions| ClientConfig {
+        fingerprint: Fingerprint::by_name("chrome").unwrap(),
+        server_name: sni.into(),
+        alpn: None,
+        trust: Trust::Certificate {
+            verifier: build_verifier(&opts).unwrap(),
+            name: ServerName::try_from(sni.to_string()).unwrap(),
+        },
+    };
+    let pinned = VerifyOptions {
+        leaf_pins: vec![ca_pin],
+        ..Default::default()
+    };
+
+    assert!(
+        connect(server(), &client("real.test", pinned.clone()))
+            .await
+            .is_ok(),
+        "CA pin + matching name"
+    );
+    assert!(
+        connect(server(), &client("other.test", pinned.clone()))
+            .await
+            .is_err(),
+        "the name is still checked"
+    );
+    let by_name = VerifyOptions {
+        verify_names: vec!["real.test".into()],
+        ..pinned.clone()
+    };
+    assert!(
+        connect(server(), &client("other.test", by_name))
+            .await
+            .is_ok(),
+        "verify_names replaces the SNI"
+    );
+    let wrong = VerifyOptions {
+        leaf_pins: vec![[7u8; 32]],
+        ..Default::default()
+    };
+    assert!(connect(server(), &client("real.test", wrong))
+        .await
+        .is_err());
+    // Without a pin the private CA is unknown.
+    assert!(
+        connect(server(), &client("real.test", VerifyOptions::default()))
+            .await
+            .is_err()
+    );
+}

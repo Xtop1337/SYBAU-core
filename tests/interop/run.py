@@ -31,6 +31,9 @@ import sys
 import threading
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import client_formats  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 WORK = os.path.join(HERE, ".work")
@@ -39,6 +42,7 @@ SINGBOX = os.environ.get("SINGBOX_BIN", os.path.join(HERE, ".bin", "sing-box"))
 SYBAU = os.environ.get("SYBAU_BIN", os.path.join(ROOT, "target", "debug", "sybau"))
 
 UUID = "b831381d-6324-4d53-ad4f-8cda48b30811"
+SERVER_PIN = ""
 PASSWORD = "interop-password"
 SNI = "sybau.test"
 BIG = bytes(range(256)) * 4096 * 8  # 8 MiB
@@ -166,8 +170,8 @@ def start_tls_site(port, cert, key):
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
 
-def make_cert():
-    cert, key = os.path.join(WORK, "cert.pem"), os.path.join(WORK, "key.pem")
+def make_cert(name="cert"):
+    cert, key = os.path.join(WORK, f"{name}.pem"), os.path.join(WORK, f"{name}-key.pem")
     subprocess.run(
         ["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
          "-nodes", "-keyout", key, "-out", cert, "-days", "30", "-subj", f"/CN={SNI}",
@@ -603,21 +607,67 @@ def server_command(case, port, path):
     return cmd
 
 
-def run_case(case, index, services, keep_logs):
+class Skip(Exception):
+    pass
+
+
+def write_client_config(case, client_format, server_port, proxy_port, path, cert_path):
+    """Writes the SYBAU client config for a case, going through another
+    program's format when asked: the foreign config is first accepted by
+    the real program, then converted by sybau."""
+    native = {"log": {"level": "debug"}, "control": {"enabled": False},
+              "inbounds": [{"type": "mixed", "tag": "in", "listen": "127.0.0.1", "port": proxy_port}],
+              "outbounds": [{"tag": "proxy", "server": "127.0.0.1", "port": server_port, **case.outbound}]}
+    if client_format == "native":
+        with open(path, "w") as f:
+            json.dump(native, f, indent=1)
+        return
+    try:
+        if client_format == "xray":
+            foreign, checker = client_formats.xray(case.outbound, "127.0.0.1", server_port, proxy_port), [XRAY, "run", "-test", "-c"]
+        elif client_format == "sing-box":
+            foreign, checker = client_formats.singbox(case.outbound, "127.0.0.1", server_port, proxy_port, cert_path), [SINGBOX, "check", "-c"]
+        else:
+            foreign, checker = client_formats.link(case.outbound, "127.0.0.1", server_port), None
+    except client_formats.Unsupported as e:
+        raise Skip(str(e))
+    if client_format == "link":
+        r = subprocess.run([SYBAU, "import", foreign], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"sybau import failed: {r.stderr.strip()}")
+        outbound = json.loads(r.stdout)[0]
+        outbound["tag"] = "proxy"
+        native["outbounds"] = [outbound]
+        with open(path, "w") as f:
+            json.dump(native, f, indent=1)
+        return
+    foreign_path = path + "." + client_format + ".json"
+    with open(foreign_path, "w") as f:
+        json.dump(foreign, f, indent=1)
+    r = subprocess.run([*checker, foreign_path], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"the {client_format} client config is invalid for {client_format} itself: {(r.stdout + r.stderr).strip()[-300:]}")
+    r = subprocess.run([SYBAU, "convert", "--from", client_format, foreign_path, "-o", path], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"sybau convert failed: {r.stderr.strip()}")
+
+
+def run_case(case, index, services, keep_logs, client_format="native"):
     origin_port, banner_port, echo_ports, https_port = services
     server_port, proxy_port = free_ports(2)
     slug = case.name.replace("/", "_").replace("+", "-")
     server_cfg = os.path.join(WORK, f"{slug}.server.json")
     client_cfg = os.path.join(WORK, f"{slug}.sybau.json")
+    try:
+        pins = (case.outbound.get("tls") or {}).get("pinned_cert_sha256", [])
+        cert_file = "cert.pem" if SERVER_PIN in pins else "other-cert.pem"
+        write_client_config(case, client_format, server_port, proxy_port, client_cfg, os.path.join(WORK, cert_file))
+    except Skip as e:
+        return None, str(e)
+    except RuntimeError as e:
+        return False, str(e)
     server_log = open(os.path.join(WORK, f"{slug}.server.log"), "w")
     client_log = open(os.path.join(WORK, f"{slug}.sybau.log"), "w")
-    with open(client_cfg, "w") as f:
-        json.dump({
-            "log": {"level": "debug"},
-            "control": {"enabled": False},
-            "inbounds": [{"type": "mixed", "tag": "in", "listen": "127.0.0.1", "port": proxy_port}],
-            "outbounds": [{"tag": "proxy", "server": "127.0.0.1", "port": server_port, **case.outbound}],
-        }, f, indent=1)
 
     server = subprocess.Popen(server_command(case, server_port, server_cfg), stdout=server_log, stderr=subprocess.STDOUT)
     client = subprocess.Popen([SYBAU, "run", "-c", client_cfg, "--profile", f"interop-{index}"],
@@ -662,11 +712,19 @@ def main():
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--keep-logs", action="store_true")
     ap.add_argument("--report", help="write a Markdown table of results to this file")
+    ap.add_argument("--client-format", default="native", choices=["native", "xray", "sing-box", "link"],
+                    help="write the client config as Xray / sing-box config or share link, check it with the real "
+                         "program, convert it with sybau and run that")
     args = ap.parse_args()
 
     shutil.rmtree(WORK, ignore_errors=True)
     os.makedirs(WORK)
     cert, key, pin = make_cert()
+    # A second certificate, trusted by the sing-box form of cases whose
+    # pin deliberately does not match the server.
+    make_cert("other-cert")
+    global SERVER_PIN
+    SERVER_PIN = pin
     for binary in (XRAY, SINGBOX, SYBAU):
         if not os.path.exists(binary):
             print(f"missing {binary} (run tests/interop/build-refs.sh and `cargo build -p sybau`)", file=sys.stderr)
@@ -692,17 +750,21 @@ def main():
     results = []
     for i, case in enumerate(cases):
         started = time.time()
-        ok, detail = run_case(case, i, services, args.keep_logs)
+        ok, detail = run_case(case, i, services, args.keep_logs, args.client_format)
         results.append((case, ok, detail))
-        mark = "ok  " if ok else "FAIL"
+        mark = {True: "ok  ", False: "FAIL", None: "skip"}[ok]
         print(f"{mark} {case.name:58s} {time.time() - started:5.1f}s  {detail}", flush=True)
 
-    failed = [r for r in results if not r[1]]
-    print(f"\n{len(results) - len(failed)}/{len(results)} cases passed")
+    failed = [r for r in results if r[1] is False]
+    skipped = [r for r in results if r[1] is None]
+    print(f"\n{len(results) - len(failed) - len(skipped)}/{len(results) - len(skipped)} cases passed"
+          + (f", {len(skipped)} skipped (no equivalent in {args.client_format})" if skipped else ""))
     if args.report:
         with open(args.report, "w") as f:
             f.write("| Case | TCP | UDP |\n|---|---|---|\n")
             for case, ok, _ in results:
+                if ok is None:
+                    continue
                 tcp = "rejected, as it must be" if case.expect_fail and ok else ("pass" if ok else "FAIL")
                 udp = "—" if (not case.udp or case.expect_fail) else ("pass" if ok else "FAIL")
                 f.write(f"| `{case.name}` | {tcp} | {udp} |\n")

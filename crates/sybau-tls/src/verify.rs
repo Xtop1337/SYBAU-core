@@ -79,14 +79,27 @@ pub fn chain_hash<'a>(certs: impl Iterator<Item = &'a [u8]>) -> [u8; 32] {
 pub struct VerifyOptions {
     /// Accept any certificate.
     pub insecure: bool,
-    /// SHA-256 of acceptable leaf certificates; a match is sufficient.
+    /// SHA-256 of certificates (Xray `pinnedPeerCertSha256`): a pinned
+    /// leaf is accepted as is; a pinned CA in the chain becomes the only
+    /// trusted root.
     pub leaf_pins: Vec<[u8; 32]>,
     /// Xray chain hashes, checked in addition to normal verification.
     pub chain_pins: Vec<[u8; 32]>,
+    /// Names the certificate is checked against instead of the SNI
+    /// (Xray `verifyPeerCertByName`).
+    pub verify_names: Vec<String>,
 }
 
 impl VerifyOptions {
     pub fn from_strings(insecure: bool, leaf: &[String], chain: &[String]) -> Result<Self> {
+        // Xray writes several hashes in one comma-separated string.
+        let leaf: Vec<String> = leaf
+            .iter()
+            .flat_map(|l| l.split(','))
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect();
+        let leaf = &leaf[..];
         Ok(Self {
             insecure,
             leaf_pins: leaf
@@ -97,6 +110,7 @@ impl VerifyOptions {
                 .iter()
                 .map(|p| parse_sha256(p))
                 .collect::<Result<_>>()?,
+            verify_names: Vec::new(),
         })
     }
 }
@@ -105,6 +119,7 @@ impl VerifyOptions {
 struct Verifier {
     /// `None` when `insecure` is set.
     webpki: Option<Arc<WebPkiServerVerifier>>,
+    verify_names: Vec<ServerName<'static>>,
     algorithms: WebPkiSupportedAlgorithms,
     leaf_pins: Vec<[u8; 32]>,
     chain_pins: Vec<[u8; 32]>,
@@ -119,9 +134,47 @@ impl ServerCertVerifier for Verifier {
         ocsp_response: &[u8],
         now: UnixTime,
     ) -> Result<ServerCertVerified, rustls::Error> {
+        // Names to check; `verify_names` replaces the SNI.
+        let names: Vec<&ServerName<'_>> = if self.verify_names.is_empty() {
+            vec![server_name]
+        } else {
+            self.verify_names.iter().collect()
+        };
+        let check = |verifier: &WebPkiServerVerifier| -> Result<(), rustls::Error> {
+            let mut last = None;
+            for name in &names {
+                match verifier.verify_server_cert(
+                    end_entity,
+                    intermediates,
+                    name,
+                    ocsp_response,
+                    now,
+                ) {
+                    Ok(_) => return Ok(()),
+                    Err(e) => last = Some(e),
+                }
+            }
+            Err(last.unwrap_or_else(|| rustls::Error::General("no name to verify".into())))
+        };
         if !self.leaf_pins.is_empty() {
             let leaf: [u8; 32] = Sha256::digest(end_entity.as_ref()).into();
             if self.leaf_pins.contains(&leaf) {
+                return Ok(ServerCertVerified::assertion());
+            }
+            // A pinned CA in the chain becomes the only trusted root.
+            let pinned_ca = intermediates
+                .iter()
+                .find(|c| self.leaf_pins.contains(&Sha256::digest(c.as_ref()).into()));
+            if let Some(ca) = pinned_ca {
+                let mut store = RootCertStore::empty();
+                store
+                    .add(ca.clone().into_owned())
+                    .map_err(|e| rustls::Error::General(format!("pinned CA: {e}")))?;
+                let verifier =
+                    WebPkiServerVerifier::builder_with_provider(Arc::new(store), provider())
+                        .build()
+                        .map_err(|e| rustls::Error::General(format!("pinned CA: {e}")))?;
+                check(&verifier)?;
                 return Ok(ServerCertVerified::assertion());
             }
             if self.chain_pins.is_empty() {
@@ -140,13 +193,7 @@ impl ServerCertVerifier for Verifier {
             }
         }
         if let Some(webpki) = &self.webpki {
-            webpki.verify_server_cert(
-                end_entity,
-                intermediates,
-                server_name,
-                ocsp_response,
-                now,
-            )?;
+            check(webpki)?;
         }
         Ok(ServerCertVerified::assertion())
     }
@@ -187,8 +234,17 @@ pub fn build_verifier(opts: &VerifyOptions) -> Result<Arc<dyn ServerCertVerifier
                 .map_err(|e| anyhow!("cannot build certificate verifier: {e}"))?,
         )
     };
+    let verify_names = opts
+        .verify_names
+        .iter()
+        .map(|n| {
+            ServerName::try_from(n.clone())
+                .map_err(|_| anyhow!("invalid name `{n}` in verify_names"))
+        })
+        .collect::<Result<_>>()?;
     Ok(Arc::new(Verifier {
         webpki,
+        verify_names,
         algorithms: provider.signature_verification_algorithms,
         leaf_pins: opts.leaf_pins.clone(),
         chain_pins: opts.chain_pins.clone(),

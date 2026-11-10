@@ -45,12 +45,25 @@
 | Активная проверка задержки по URL (urltest) | не начато: `least_ping` и обход сбоев опираются на реальные соединения |
 | DNS: UDP (с переходом на TCP), TCP, DoT, DoH, `local`, `rcode://`; сервер через любой outbound (`detour`); правила выбора сервера; кеш; hosts; fake-IP; ECS; стратегии `prefer_ipv4`/`ipv4_only` и др. | готово, проверено |
 | DoQ, DoH3 | не начато (этап 6, вместе с QUIC) |
-| Конфиги Xray / sing-box, ссылки, подписки, `convert`, системный прокси Windows | не начато (этап 4) |
+| Чтение конфигов Xray (JSON) и sing-box (JSON) напрямую: `run`, `check`, C API и `core.reload` определяют формат сами | готово, проверено настоящими Xray и sing-box (см. ниже) |
+| `sybau convert --from xray\|sing-box\|auto` | готово, проверено |
+| Ссылки `vless://`, `vmess://`, `trojan://`, `ss://`, `hy2://`/`hysteria2://`, `tuic://`, `wireguard://` | готово, проверено (для Hysteria2/TUIC/WireGuard пока только разбор: сами протоколы — этапы 6 и 8) |
+| Подписки: base64, списки ссылок, Clash/mihomo YAML, sing-box/Xray JSON — по содержимому (`sybau import`, `subscriptions.parse`) | готово, проверено |
+| Скачивание подписок по URL и автообновление по таймеру | не начато: содержимое пока передаёт приложение |
+| Системный прокси Windows | в работе (этап 4) |
 | TUN (Wintun, auto-route, kill switch) | не начато (этап 5) |
 | Hysteria2, Hysteria, TUIC, XHTTP, mKCP | не начато (этап 6) |
 | Серверные inbound, REALITY-сервер, TProxy | не начато (этап 7) |
 | ShadowTLS, AnyTLS, Snell, SSH, Tor, WireGuard, ECH, обход DPI | не начато (этап 8) |
 | Фаззинг, оптимизации, подписанные релизы | не начато (этап 9) |
+
+Импорт проверяется на том же стенде: для каждого сценария клиентский конфиг
+записывается в формате Xray, sing-box или как ссылка, сначала принимается самой
+программой (`xray run -test`, `sing-box check`), затем переводится
+`sybau convert` / `sybau import`, и трафик должен пройти через настоящий сервер:
+`tests/interop/run.py --client-format xray|sing-box|link`. Результат на момент
+коммита: через Xray-конфиг 87/87, через sing-box-конфиг 91/91, через ссылки 85/85
+(сценарии без аналога в формате пропускаются).
 
 Полная таблица проверенных сочетаний протокол × транспорт — в
 [docs/INTEROP.md](docs/INTEROP.md): 98 сценариев против настоящих Xray-core
@@ -241,8 +254,10 @@ fake-адрес превращается обратно в домен до ро�
 
 | Команда | Что делает |
 |---|---|
-| `sybau run -c FILE [--profile NAME] [--log-level LEVEL]` | запускает ядро |
+| `sybau run -c FILE [--profile NAME] [--log-level LEVEL]` | запускает ядро (конфиг SYBAU, Xray или sing-box) |
 | `sybau check -c FILE` | проверяет конфиг |
+| `sybau convert [--from xray\|sing-box\|auto] FILE [-o OUT]` | переводит конфиг в формат SYBAU и печатает, что не удалось перенести |
+| `sybau import ССЫЛКА\|ФАЙЛ\|-` | превращает ссылки или содержимое подписки в outbound-ы |
 | `sybau ctl METHOD [JSON] [--follow]` | запрос к работающему ядру |
 
 Несколько ядер одновременно запускаются с разными `--profile`.
@@ -270,6 +285,8 @@ fake-адрес превращается обратно в домен до ро�
 | `connections.list` | — | активные соединения |
 | `connections.close` | `{"id": N}` или `{"all": true}` | закрывает соединения |
 | `outbounds.list` | — | outbound-ы, их трафик и состояние групп |
+| `subscriptions.parse` | `{"content": "..."}` | outbound-ы из содержимого подписки и предупреждения |
+| `config.convert` | `{"text": "...", "from": "xray"}` | конфиг в формате SYBAU и предупреждения |
 | `dns.query` | `{"name": "example.com", "type": "A"}` | ответ DNS-модуля |
 | `dns.flush` | — | очищает кеш DNS |
 | `outbounds.select` | `{"group": "sel", "outbound": "b", "close_connections": false}` | переключает selector |
