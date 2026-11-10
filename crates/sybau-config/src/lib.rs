@@ -41,6 +41,30 @@ impl Config {
                 }
             }
         }
+        for ob in &self.outbounds {
+            let members = match &ob.kind {
+                OutboundKind::Selector(g) => &g.outbounds,
+                OutboundKind::Balancer(g) => &g.outbounds,
+                _ => continue,
+            };
+            if members.is_empty() {
+                bail!("outbound `{}`: `outbounds` is empty", ob.tag);
+            }
+            for m in members {
+                if !tags.contains(m.as_str()) {
+                    bail!("outbound `{}`: member `{m}` does not exist", ob.tag);
+                }
+            }
+            if let OutboundKind::Selector(SelectorOutbound {
+                default: Some(d),
+                outbounds,
+            }) = &ob.kind
+            {
+                if !outbounds.contains(d) {
+                    bail!("outbound `{}`: default `{d}` is not a member", ob.tag);
+                }
+            }
+        }
         let mut in_tags = std::collections::HashSet::new();
         for ib in &self.inbounds {
             if !ib.tag.is_empty() && !in_tags.insert(ib.tag.as_str()) {

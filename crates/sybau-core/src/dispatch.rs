@@ -223,7 +223,10 @@ impl Dispatcher {
             loop {
                 tokio::select! {
                     r = &mut connect => match r {
-                        Ok(Ok(s)) => break s,
+                        Ok(Ok(s)) => {
+                            guard.set_chain(sess.chain.lock().clone());
+                            break s;
+                        }
                         Ok(Err(e)) => {
                             warn!(target: "sybau::route", "[{}] {} via {}: {}", sess.id, sess.target, tag, e);
                             return;
@@ -333,7 +336,10 @@ impl Dispatcher {
         info!(target: "sybau::route", "[{}] udp {} -> {}{} via {} ({}, {})", sess.id, source_label(&sess), sess.target, host_note(&sess), tag, why, sess.inbound_tag);
         let guard = self.stats.track(&sess, &tag);
         let remote = match tokio::time::timeout(CONNECT_TIMEOUT, outbound.bind(&sess)).await {
-            Ok(Ok(c)) => c,
+            Ok(Ok(c)) => {
+                guard.set_chain(sess.chain.lock().clone());
+                c
+            }
             Ok(Err(e)) => {
                 warn!(target: "sybau::route", "[{}] udp {} via {}: {}", sess.id, sess.target, tag, e);
                 return;

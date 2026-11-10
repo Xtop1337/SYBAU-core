@@ -41,7 +41,9 @@
 | Sniffing: TLS SNI, HTTP Host, QUIC SNI, BitTorrent, DNS; `override_destination` | готово, проверено |
 | `domain_strategy`: `as_is`, `ip_if_non_match`, `ip_on_demand` | готово, проверено (резолвер пока системный) |
 | Удалённые rule-set с автообновлением, подписки по URL, urltest | не начато |
-| Балансировщики, selector, DNS-модуль | в работе (этап 3) |
+| Группы: `selector` (переключение через API, выбор переживает перезагрузку конфига) и `balancer` (`round_robin`, `random`, `fallback`, `least_ping`) с автоматическим обходом упавшего сервера | готово, проверено |
+| Активная проверка задержки по URL (urltest) | не начато: `least_ping` и обход сбоев опираются на реальные соединения |
+| DNS-модуль | в работе (этап 3) |
 | Конфиги Xray / sing-box, ссылки, подписки, `convert`, системный прокси Windows | не начато (этап 4) |
 | TUN (Wintun, auto-route, kill switch) | не начато (этап 5) |
 | Hysteria2, Hysteria, TUIC, XHTTP, mKCP | не начато (этап 6) |
@@ -187,6 +189,20 @@ VLESS + Vision + REALITY с отпечатком Chrome и фрагментац�
 }
 ```
 
+Группы outbound:
+
+```json
+{ "type": "selector", "tag": "manual", "outbounds": ["nl", "de"], "default": "nl" },
+{ "type": "balancer", "tag": "auto", "outbounds": ["nl", "de", "fi"],
+  "strategy": "fallback", "failure_cooldown": "30s" }
+```
+
+Балансировщик пробует участников по порядку стратегии; при ошибке подключения
+участник откладывается на `failure_cooldown`, а соединение уходит следующему.
+`least_ping` выбирает участника с наименьшим временем установления соединения
+на реальном трафике. В `connections.list` поле `chain` показывает, через какого
+участника группы пошло соединение.
+
 Внутри правила условия одной группы объединяются через «или»
 (`domain`/`domain_suffix`/`domain_keyword`/`domain_regex`/`geosite`/`ip_cidr`/`geoip`/`rule_set`),
 а разные группы — через «и» (порт, сеть, протокол, процесс и т.д.), как в sing-box.
@@ -225,7 +241,8 @@ VLESS + Vision + REALITY с отпечатком Chrome и фрагментац�
 | `logs.subscribe` | `{"level": "info"}` | поток уведомлений `log` |
 | `connections.list` | — | активные соединения |
 | `connections.close` | `{"id": N}` или `{"all": true}` | закрывает соединения |
-| `outbounds.list` | — | outbound-ы и их трафик |
+| `outbounds.list` | — | outbound-ы, их трафик и состояние групп |
+| `outbounds.select` | `{"group": "sel", "outbound": "b", "close_connections": false}` | переключает selector |
 
 ## Тесты
 

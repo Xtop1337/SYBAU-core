@@ -49,6 +49,9 @@ pub struct Session {
     /// Executable name of that process.
     pub process_name: Option<Arc<str>>,
     pub sniff: SniffOptions,
+    /// Members chosen by outbound groups while connecting, outermost
+    /// first; written by the groups, read by the dispatcher.
+    pub chain: Arc<parking_lot::Mutex<Vec<Arc<str>>>>,
 }
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -72,6 +75,7 @@ impl Session {
             process_path: None,
             process_name: None,
             sniff: SniffOptions::default(),
+            chain: Default::default(),
         }
     }
 }

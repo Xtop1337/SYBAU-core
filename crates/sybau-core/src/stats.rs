@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::io;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::task::{Context, Poll};
 use std::time::SystemTime;
 
@@ -39,6 +39,8 @@ struct ConnEntry {
     started: SystemTime,
     counter: Arc<Counter>,
     cancel: CancellationToken,
+    /// Group members the connection went through, outermost first.
+    chain: Arc<OnceLock<Vec<Arc<str>>>>,
 }
 
 /// Process-wide statistics. Survives config reloads.
@@ -62,6 +64,8 @@ impl Stats {
     pub fn track(self: &Arc<Self>, sess: &Session, outbound: &Arc<str>) -> ConnGuard {
         let counter = Arc::new(Counter::default());
         let cancel = CancellationToken::new();
+        let chain = Arc::new(OnceLock::new());
+        let members = Arc::new(OnceLock::new());
         self.conns.lock().insert(
             sess.id,
             ConnEntry {
@@ -74,6 +78,7 @@ impl Stats {
                 started: SystemTime::now(),
                 counter: counter.clone(),
                 cancel: cancel.clone(),
+                chain: chain.clone(),
             },
         );
         ConnGuard {
@@ -82,9 +87,11 @@ impl Stats {
             counters: Counters {
                 conn: counter,
                 outbound: self.outbound_counter(outbound),
+                members,
                 stats: self.clone(),
             },
             cancel,
+            chain,
         }
     }
 
@@ -103,6 +110,7 @@ impl Stats {
                     *id,
                     json!({
                         "id": id, "network": c.network, "inbound": &*c.inbound, "outbound": &*c.outbound,
+                        "chain": c.chain.get().map(|v| v.iter().map(|t| t.to_string()).collect::<Vec<_>>()).unwrap_or_default(),
                         "source": c.source, "target": c.target, "host": c.host,
                         "started_ms": started, "up": up, "down": down,
                     }),
@@ -146,6 +154,9 @@ impl Stats {
 pub struct Counters {
     conn: Arc<Counter>,
     outbound: Arc<Counter>,
+    /// Counters of the group members that served the connection; set
+    /// once the outbound has connected.
+    members: Arc<OnceLock<Vec<Arc<Counter>>>>,
     stats: Arc<Stats>,
 }
 
@@ -156,6 +167,7 @@ impl Counters {
         Self {
             conn: Arc::new(Counter::default()),
             outbound: Arc::new(Counter::default()),
+            members: Arc::new(OnceLock::new()),
             stats,
         }
     }
@@ -165,6 +177,11 @@ impl Counters {
         let n = n as u64;
         self.conn.up.fetch_add(n, Ordering::Relaxed);
         self.outbound.up.fetch_add(n, Ordering::Relaxed);
+        if let Some(members) = self.members.get() {
+            members
+                .iter()
+                .for_each(|m| _ = m.up.fetch_add(n, Ordering::Relaxed));
+        }
         self.stats.total.up.fetch_add(n, Ordering::Relaxed);
     }
 
@@ -173,6 +190,11 @@ impl Counters {
         let n = n as u64;
         self.conn.down.fetch_add(n, Ordering::Relaxed);
         self.outbound.down.fetch_add(n, Ordering::Relaxed);
+        if let Some(members) = self.members.get() {
+            members
+                .iter()
+                .for_each(|m| _ = m.down.fetch_add(n, Ordering::Relaxed));
+        }
         self.stats.total.down.fetch_add(n, Ordering::Relaxed);
     }
 }
@@ -182,6 +204,23 @@ pub struct ConnGuard {
     stats: Arc<Stats>,
     pub counters: Counters,
     pub cancel: CancellationToken,
+    chain: Arc<OnceLock<Vec<Arc<str>>>>,
+}
+
+impl ConnGuard {
+    /// Records the group members chosen for this connection; their
+    /// counters receive the traffic from now on.
+    pub fn set_chain(&self, chain: Vec<Arc<str>>) {
+        if chain.is_empty() {
+            return;
+        }
+        let counters = chain
+            .iter()
+            .map(|t| self.stats.outbound_counter(t))
+            .collect();
+        let _ = self.counters.members.set(counters);
+        let _ = self.chain.set(chain);
+    }
 }
 
 impl Drop for ConnGuard {

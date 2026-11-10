@@ -430,5 +430,5 @@ async fn detour_chain_and_cycle_detection() {
     }))
     .unwrap();
     let err = looped.start(cfg).await.unwrap_err();
-    assert!(format!("{err:#}").contains("detour cycle"), "{err:#}");
+    assert!(format!("{err:#}").contains("outbound cycle"), "{err:#}");
 }

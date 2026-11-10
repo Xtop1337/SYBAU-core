@@ -83,6 +83,8 @@ struct Inner {
     opts: EngineOptions,
     /// Parsed geo files, shared by reloads.
     geo: sybau_route::geodata::GeoCache,
+    /// Selector choices made through the control API, kept across reloads.
+    selections: parking_lot::Mutex<std::collections::HashMap<String, String>>,
     stats: Arc<Stats>,
     running: tokio::sync::Mutex<Option<Running>>,
     stop: CancellationToken,
@@ -107,6 +109,7 @@ impl Engine {
             inner: Arc::new(Inner {
                 opts,
                 geo: Default::default(),
+                selections: Default::default(),
                 stats: Arc::new(Stats::default()),
                 running: tokio::sync::Mutex::new(None),
                 stop: CancellationToken::new(),
@@ -147,6 +150,7 @@ impl Engine {
         let ctx = BuildContext {
             resolver: Arc::new(SystemResolver),
             protect: self.inner.opts.protect.clone(),
+            selections: self.inner.selections.lock().clone(),
         };
         let outbounds = OutboundManager::build(&config.outbounds, &ctx)?;
         let final_tag: Arc<str> = match &config.route.r#final {
@@ -377,10 +381,42 @@ impl Engine {
                         .filter_map(|tag| d.outbounds.get(tag))
                         .map(|o| {
                             let (up, down) = self.inner.stats.outbound_counter(&Arc::from(o.tag())).snapshot();
-                            json!({ "tag": o.tag(), "type": o.kind(), "final": o.tag() == &*d.router.final_tag, "up": up, "down": down })
+                            let mut v = json!({ "tag": o.tag(), "type": o.kind(), "final": o.tag() == &*d.router.final_tag, "up": up, "down": down });
+                            if let Some(g) = d.outbounds.group(o.tag()) {
+                                v["group"] = g.info();
+                            }
+                            v
                         })
                         .collect(),
                 ))
+            }
+            "outbounds.select" => {
+                let group = params
+                    .get("group")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| RpcError::invalid_params("`group` is required"))?;
+                let member = params
+                    .get("outbound")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| RpcError::invalid_params("`outbound` is required"))?;
+                let guard = self.inner.running.lock().await;
+                let running = guard
+                    .as_ref()
+                    .ok_or_else(|| RpcError::failed("core is not running"))?;
+                let g = running.dispatcher.outbounds.group(group).ok_or_else(|| {
+                    RpcError::invalid_params(format!("`{group}` is not an outbound group"))
+                })?;
+                g.select(member)
+                    .map_err(|e| RpcError::invalid_params(format!("{e:#}")))?;
+                self.inner
+                    .selections
+                    .lock()
+                    .insert(group.to_string(), member.to_string());
+                // Connections through the old member keep running unless asked.
+                if params.get("close_connections").and_then(Value::as_bool) == Some(true) {
+                    self.inner.stats.close_all();
+                }
+                Ok(json!({ "ok": true }))
             }
             other => Err(RpcError::method_not_found(other)),
         }

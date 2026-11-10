@@ -186,6 +186,33 @@ pub enum OutboundKind {
     Vmess(VmessOutbound),
     Trojan(TrojanOutbound),
     Shadowsocks(ShadowsocksOutbound),
+    /// Group whose active member is chosen by hand (control API).
+    Selector(SelectorOutbound),
+    /// Group that spreads or fails over connections between members.
+    Balancer(BalancerOutbound),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SelectorOutbound {
+    pub outbounds: Vec<String>,
+    /// Member used until another one is selected. Default: the first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BalancerOutbound {
+    pub outbounds: Vec<String>,
+    /// `round_robin` (default), `random`, `fallback` (first healthy member
+    /// in order) or `least_ping` (lowest handshake time seen on real
+    /// connections).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<String>,
+    /// A member whose connection fails is skipped for this long, e.g. `30s`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_cooldown: Option<String>,
 }
 
 impl OutboundKind {
@@ -199,6 +226,8 @@ impl OutboundKind {
             OutboundKind::Vmess(_) => "vmess",
             OutboundKind::Trojan(_) => "trojan",
             OutboundKind::Shadowsocks(_) => "shadowsocks",
+            OutboundKind::Selector(_) => "selector",
+            OutboundKind::Balancer(_) => "balancer",
         }
     }
 }

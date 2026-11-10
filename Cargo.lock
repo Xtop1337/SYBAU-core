@@ -1441,6 +1441,7 @@ dependencies = [
  "humantime",
  "libc",
  "parking_lot",
+ "rand",
  "serde",
  "serde_json",
  "sybau-common",
