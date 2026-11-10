@@ -1424,6 +1424,7 @@ name = "sybau-config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "humantime",
  "serde",
  "serde_json",
 ]
@@ -1450,6 +1451,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1495,7 +1497,11 @@ dependencies = [
  "aes",
  "aho-corasick",
  "anyhow",
+ "flate2",
+ "parking_lot",
  "regex",
+ "serde",
+ "serde_json",
  "sybau-common",
  "sybau-proto",
  "sybau-tls",

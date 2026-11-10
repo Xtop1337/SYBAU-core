@@ -11,6 +11,13 @@ pub fn normalize(domain: &str) -> String {
     domain.trim_end_matches('.').to_ascii_lowercase()
 }
 
+impl DomainSetBuilder {
+    /// Number of patterns collected so far.
+    pub fn len(&self) -> usize {
+        self.full.len() + self.suffix.len() + self.keyword.len() + self.regex.len()
+    }
+}
+
 /// Collects patterns; [`build`](Self::build) turns them into a matcher.
 #[derive(Default, Debug, Clone)]
 pub struct DomainSetBuilder {
@@ -48,6 +55,18 @@ impl DomainSetBuilder {
         self.regex.push(pattern.to_string());
     }
 
+    /// Exact match against the value as stored, without lower-casing.
+    /// sing-box rule-sets compare case-sensitively; queries are always
+    /// lower case, so an upper-case entry never matches, as in sing-box.
+    pub fn full_raw(&mut self, domain: &str) {
+        self.full.push(domain.to_string());
+    }
+
+    /// Suffix counterpart of [`full_raw`](Self::full_raw).
+    pub fn suffix_raw(&mut self, suffix: &str) {
+        self.suffix.push(suffix.to_string());
+    }
+
     pub fn extend(&mut self, other: &DomainSetBuilder) {
         self.full.extend_from_slice(&other.full);
         self.suffix.extend_from_slice(&other.suffix);
@@ -82,8 +101,9 @@ impl DomainSetBuilder {
         let regex = if self.regex.is_empty() {
             None
         } else {
+            // Case-sensitive like Xray and sing-box; domains are matched
+            // in lower case.
             let set = regex::RegexSetBuilder::new(&self.regex)
-                .case_insensitive(true)
                 .size_limit(32 << 20)
                 .build()
                 .context("invalid domain regex")?;

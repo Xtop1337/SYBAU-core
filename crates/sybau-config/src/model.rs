@@ -115,6 +115,32 @@ pub struct LocalProxyInbound {
     /// Allow SOCKS5 UDP ASSOCIATE.
     #[serde(default = "default_true")]
     pub udp: bool,
+    #[serde(default)]
+    pub sniff: SniffConfig,
+}
+
+/// Protocol sniffing of an inbound.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct SniffConfig {
+    /// Look at the first bytes of every connection (TLS SNI, HTTP Host,
+    /// QUIC SNI, BitTorrent) so that rules can match domains and protocols.
+    pub enabled: bool,
+    /// Replace an IP target with the sniffed domain, so that the domain
+    /// is resolved at the end of the tunnel (Xray `routeOnly: false`).
+    pub override_destination: bool,
+    /// How long to wait for the client's first bytes, in milliseconds.
+    pub timeout_ms: u64,
+}
+
+impl Default for SniffConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            override_destination: false,
+            timeout_ms: 300,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,13 +218,7 @@ pub struct DirectOutbound {
     pub fragment: Option<FragmentConfig>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, default)]
-pub struct RouteConfig {
-    /// Outbound for traffic no rule matched. Default: the first outbound.
-    #[serde(rename = "final", skip_serializing_if = "Option::is_none")]
-    pub r#final: Option<String>,
-}
+pub use crate::route::RouteConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

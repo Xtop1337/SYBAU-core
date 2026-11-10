@@ -5,6 +5,7 @@
 //! (Xray, sing-box) are translated into this model by importer modules.
 
 pub mod model;
+pub mod route;
 
 pub use model::*;
 
@@ -49,6 +50,31 @@ impl Config {
         if let Some(f) = &self.route.r#final {
             if !tags.contains(f.as_str()) {
                 bail!("route.final `{f}` does not exist");
+            }
+        }
+        let mut sets = std::collections::HashSet::new();
+        for rs in &self.route.rule_set {
+            if !sets.insert(rs.tag.as_str()) {
+                bail!("duplicate rule-set tag `{}`", rs.tag);
+            }
+            if let Some(d) = &rs.download_detour {
+                if !tags.contains(d.as_str()) {
+                    bail!(
+                        "rule-set `{}`: download_detour `{d}` does not exist",
+                        rs.tag
+                    );
+                }
+            }
+        }
+        for (i, rule) in self.route.rules.iter().enumerate() {
+            match rule.action.as_deref().unwrap_or("route") {
+                "route" => match &rule.outbound {
+                    Some(o) if tags.contains(o.as_str()) => {}
+                    Some(o) => bail!("route.rules[{i}]: outbound `{o}` does not exist"),
+                    None => bail!("route.rules[{i}]: `outbound` is required"),
+                },
+                "reject" => {}
+                other => bail!("route.rules[{i}]: unknown action `{other}` (use route or reject)"),
             }
         }
         Ok(())

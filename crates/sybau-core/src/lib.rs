@@ -10,6 +10,7 @@ pub mod engine;
 pub mod inbound;
 pub mod logging;
 pub mod outbound;
+pub mod process;
 pub mod relay;
 pub mod stats;
 

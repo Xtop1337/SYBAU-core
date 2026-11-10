@@ -1,0 +1,1007 @@
+{
+ "geoip": [
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "5.8.1.1",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "5.9.0.0",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "77.88.63.255",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "77.88.64.0",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "2a02:6b8::1",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "2a02:6b9::1",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "10.1.2.3",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "11.0.0.0",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "192.0.2.1",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "192.0.2.2",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "::1",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "::2",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "127.0.0.1",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "192.168.5.5",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "fd00::1",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": false,
+   "ip": "8.8.8.8",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "5.8.1.1",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "5.9.0.0",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "77.88.63.255",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "77.88.64.0",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "2a02:6b8::1",
+   "match": false
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "2a02:6b9::1",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "10.1.2.3",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "11.0.0.0",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "192.0.2.1",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "192.0.2.2",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "::1",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "::2",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "127.0.0.1",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "192.168.5.5",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "fd00::1",
+   "match": true
+  },
+  {
+   "code": "ru",
+   "reverse": true,
+   "ip": "8.8.8.8",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "5.8.1.1",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "5.9.0.0",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "77.88.63.255",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "77.88.64.0",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "2a02:6b8::1",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "2a02:6b9::1",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "10.1.2.3",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "11.0.0.0",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "192.0.2.1",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "192.0.2.2",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "::1",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "::2",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "127.0.0.1",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "192.168.5.5",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "fd00::1",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": false,
+   "ip": "8.8.8.8",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "5.8.1.1",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "5.9.0.0",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "77.88.63.255",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "77.88.64.0",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "2a02:6b8::1",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "2a02:6b9::1",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "10.1.2.3",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "11.0.0.0",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "192.0.2.1",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "192.0.2.2",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "::1",
+   "match": false
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "::2",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "127.0.0.1",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "192.168.5.5",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "fd00::1",
+   "match": true
+  },
+  {
+   "code": "test",
+   "reverse": true,
+   "ip": "8.8.8.8",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "5.8.1.1",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "5.9.0.0",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "77.88.63.255",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "77.88.64.0",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "2a02:6b8::1",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "2a02:6b9::1",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "10.1.2.3",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "11.0.0.0",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "192.0.2.1",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "192.0.2.2",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "::1",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "::2",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "127.0.0.1",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "192.168.5.5",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "fd00::1",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": false,
+   "ip": "8.8.8.8",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "5.8.1.1",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "5.9.0.0",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "77.88.63.255",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "77.88.64.0",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "2a02:6b8::1",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "2a02:6b9::1",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "10.1.2.3",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "11.0.0.0",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "192.0.2.1",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "192.0.2.2",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "::1",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "::2",
+   "match": true
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "127.0.0.1",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "192.168.5.5",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "fd00::1",
+   "match": false
+  },
+  {
+   "code": "private",
+   "reverse": true,
+   "ip": "8.8.8.8",
+   "match": true
+  }
+ ],
+ "geosite": [
+  {
+   "site": "test",
+   "domain": "full.example.com",
+   "match": true
+  },
+  {
+   "site": "test",
+   "domain": "www.full.example.com",
+   "match": false
+  },
+  {
+   "site": "test",
+   "domain": "suffix.example.org",
+   "match": true
+  },
+  {
+   "site": "test",
+   "domain": "a.b.suffix.example.org",
+   "match": true
+  },
+  {
+   "site": "test",
+   "domain": "xsuffix.example.org",
+   "match": false
+  },
+  {
+   "site": "test",
+   "domain": "ads.example.net",
+   "match": true
+  },
+  {
+   "site": "test",
+   "domain": "x.ads.example.net",
+   "match": true
+  },
+  {
+   "site": "test",
+   "domain": "cn-ads.example.net",
+   "match": true
+  },
+  {
+   "site": "test",
+   "domain": "my-keyword-hit.io",
+   "match": true
+  },
+  {
+   "site": "test",
+   "domain": "r12.regex.test",
+   "match": true
+  },
+  {
+   "site": "test",
+   "domain": "rx.regex.test",
+   "match": false
+  },
+  {
+   "site": "test",
+   "domain": "site0.big.test",
+   "match": false
+  },
+  {
+   "site": "test",
+   "domain": "a.site4999.big.test",
+   "match": false
+  },
+  {
+   "site": "test",
+   "domain": "site5000.big.test",
+   "match": false
+  },
+  {
+   "site": "test",
+   "domain": "exact.big.test",
+   "match": false
+  },
+  {
+   "site": "test",
+   "domain": "sub.exact.big.test",
+   "match": false
+  },
+  {
+   "site": "test",
+   "domain": "unrelated.com",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "full.example.com",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "www.full.example.com",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "suffix.example.org",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "a.b.suffix.example.org",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "xsuffix.example.org",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "ads.example.net",
+   "match": true
+  },
+  {
+   "site": "test@ads",
+   "domain": "x.ads.example.net",
+   "match": true
+  },
+  {
+   "site": "test@ads",
+   "domain": "cn-ads.example.net",
+   "match": true
+  },
+  {
+   "site": "test@ads",
+   "domain": "my-keyword-hit.io",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "r12.regex.test",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "rx.regex.test",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "site0.big.test",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "a.site4999.big.test",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "site5000.big.test",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "exact.big.test",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "sub.exact.big.test",
+   "match": false
+  },
+  {
+   "site": "test@ads",
+   "domain": "unrelated.com",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "full.example.com",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "www.full.example.com",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "suffix.example.org",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "a.b.suffix.example.org",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "xsuffix.example.org",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "ads.example.net",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "x.ads.example.net",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "cn-ads.example.net",
+   "match": true
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "my-keyword-hit.io",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "r12.regex.test",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "rx.regex.test",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "site0.big.test",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "a.site4999.big.test",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "site5000.big.test",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "exact.big.test",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "sub.exact.big.test",
+   "match": false
+  },
+  {
+   "site": "test@ads@cn",
+   "domain": "unrelated.com",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "full.example.com",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "www.full.example.com",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "suffix.example.org",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "a.b.suffix.example.org",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "xsuffix.example.org",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "ads.example.net",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "x.ads.example.net",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "cn-ads.example.net",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "my-keyword-hit.io",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "r12.regex.test",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "rx.regex.test",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "site0.big.test",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "a.site4999.big.test",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "site5000.big.test",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "exact.big.test",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "sub.exact.big.test",
+   "match": false
+  },
+  {
+   "site": "empty",
+   "domain": "unrelated.com",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "full.example.com",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "www.full.example.com",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "suffix.example.org",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "a.b.suffix.example.org",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "xsuffix.example.org",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "ads.example.net",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "x.ads.example.net",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "cn-ads.example.net",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "my-keyword-hit.io",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "r12.regex.test",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "rx.regex.test",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "site0.big.test",
+   "match": true
+  },
+  {
+   "site": "big",
+   "domain": "a.site4999.big.test",
+   "match": true
+  },
+  {
+   "site": "big",
+   "domain": "site5000.big.test",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "exact.big.test",
+   "match": true
+  },
+  {
+   "site": "big",
+   "domain": "sub.exact.big.test",
+   "match": false
+  },
+  {
+   "site": "big",
+   "domain": "unrelated.com",
+   "match": false
+  }
+ ]
+}

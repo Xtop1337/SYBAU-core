@@ -1,0 +1,2802 @@
+[
+ {
+  "file": "rs-v1-0.srs",
+  "query": "full.example.com",
+  "match": true
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "a.b.suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "x.sub-only.net",
+  "match": true
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "bbc.co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v1-0.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "aa-kw-hit.net",
+  "match": true
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v1-1.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "r42.regex.test",
+  "match": true
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v1-2.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "10.1.2.3",
+  "match": true
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "172.31.255.255",
+  "match": true
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "2001:db8::1",
+  "match": true
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "198.51.100.7",
+  "match": true
+ },
+ {
+  "file": "rs-v1-3.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "full.example.com",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "www.full.example.com",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "mixed.case.example",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "a.b.suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "xsuffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "x.sub-only.net",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "sub-only.net",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "bbc.co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "xco.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "aa-kw-hit.net",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "r42.regex.test",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "rr.regex.test",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "yes.and.test",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "no.and.test",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "port-rule.test",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "nothing.example",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "10.1.2.3",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "11.0.0.0",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "172.31.255.255",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "172.32.0.0",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "2001:db8::1",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "2001:db9::1",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "198.51.100.7",
+  "match": true
+ },
+ {
+  "file": "rs-v1-5.srs",
+  "query": "198.51.100.8",
+  "match": true
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v1-6.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "full.example.com",
+  "match": true
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "a.b.suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "x.sub-only.net",
+  "match": true
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "bbc.co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v2-0.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "aa-kw-hit.net",
+  "match": true
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v2-1.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "r42.regex.test",
+  "match": true
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v2-2.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "10.1.2.3",
+  "match": true
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "172.31.255.255",
+  "match": true
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "2001:db8::1",
+  "match": true
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "198.51.100.7",
+  "match": true
+ },
+ {
+  "file": "rs-v2-3.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "yes.and.test",
+  "match": true
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v2-4.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "full.example.com",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "www.full.example.com",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "mixed.case.example",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "a.b.suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "xsuffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "x.sub-only.net",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "sub-only.net",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "bbc.co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "xco.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "aa-kw-hit.net",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "r42.regex.test",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "rr.regex.test",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "yes.and.test",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "no.and.test",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "port-rule.test",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "nothing.example",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "10.1.2.3",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "11.0.0.0",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "172.31.255.255",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "172.32.0.0",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "2001:db8::1",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "2001:db9::1",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "198.51.100.7",
+  "match": true
+ },
+ {
+  "file": "rs-v2-5.srs",
+  "query": "198.51.100.8",
+  "match": true
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v2-6.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "full.example.com",
+  "match": true
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "a.b.suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "x.sub-only.net",
+  "match": true
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "bbc.co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v3-0.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "aa-kw-hit.net",
+  "match": true
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v3-1.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "r42.regex.test",
+  "match": true
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v3-2.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "10.1.2.3",
+  "match": true
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "172.31.255.255",
+  "match": true
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "2001:db8::1",
+  "match": true
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "198.51.100.7",
+  "match": true
+ },
+ {
+  "file": "rs-v3-3.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "yes.and.test",
+  "match": true
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v3-4.srs",
+  "query": "198.51.100.8",
+  "match": false
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "full.example.com",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "www.full.example.com",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "mixed.case.example",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "a.b.suffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "xsuffix.example.org",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "x.sub-only.net",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "sub-only.net",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "bbc.co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "co.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "xco.uk",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "aa-kw-hit.net",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "r42.regex.test",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "rr.regex.test",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "yes.and.test",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "no.and.test",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "port-rule.test",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "nothing.example",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "10.1.2.3",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "11.0.0.0",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "172.31.255.255",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "172.32.0.0",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "2001:db8::1",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "2001:db9::1",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "198.51.100.7",
+  "match": true
+ },
+ {
+  "file": "rs-v3-5.srs",
+  "query": "198.51.100.8",
+  "match": true
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "www.full.example.com",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "mixed.case.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "a.b.suffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "xsuffix.example.org",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "x.sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "sub-only.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "bbc.co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "co.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "xco.uk",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "aa-kw-hit.net",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "r42.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "rr.regex.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "yes.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "no.and.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "a.inverted.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "port-rule.test",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "nothing.example",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "10.1.2.3",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "11.0.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "172.31.255.255",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "172.32.0.0",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "2001:db8::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "2001:db9::1",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "198.51.100.7",
+  "match": false
+ },
+ {
+  "file": "rs-v3-6.srs",
+  "query": "198.51.100.8",
+  "match": false
+ }
+]
