@@ -4,7 +4,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use bytes::BytesMut;
 use sybau_common::{ArcPacketConn, BoxStream, Outbound, Session};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, info, warn};
 
 use crate::outbound::OutboundManager;
@@ -12,6 +14,8 @@ use crate::relay::relay;
 use crate::stats::{CountedStream, Stats};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long to wait for the client's first bytes once the outbound is up.
+const FIRST_PAYLOAD_WAIT: Duration = Duration::from_millis(50);
 const UDP_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 const UDP_FIRST_PACKET_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -40,21 +44,53 @@ impl Dispatcher {
             .unwrap_or_else(|| "-".into());
         info!(target: "sybau::route", "[{}] tcp {} -> {} via {} ({})", sess.id, source, sess.target, tag, sess.inbound_tag);
         let guard = self.stats.track(&sess, &tag);
-        let remote = tokio::select! {
-            r = tokio::time::timeout(CONNECT_TIMEOUT, outbound.connect(&sess)) => match r {
-                Ok(Ok(s)) => s,
-                Ok(Err(e)) => {
-                    warn!(target: "sybau::route", "[{}] {} via {}: {}", sess.id, sess.target, tag, e);
-                    return;
+        let mut client = CountedStream::new(stream, guard.counters.clone());
+
+        // While the outbound connects, collect the first bytes from the
+        // client: protocol streams put their header and the first payload
+        // into one packet.
+        let mut first = BytesMut::with_capacity(16 * 1024);
+        let mut have_first = false;
+        let mut remote = {
+            let connect = tokio::time::timeout(CONNECT_TIMEOUT, outbound.connect(&sess));
+            tokio::pin!(connect);
+            loop {
+                tokio::select! {
+                    r = &mut connect => match r {
+                        Ok(Ok(s)) => break s,
+                        Ok(Err(e)) => {
+                            warn!(target: "sybau::route", "[{}] {} via {}: {}", sess.id, sess.target, tag, e);
+                            return;
+                        }
+                        Err(_) => {
+                            warn!(target: "sybau::route", "[{}] {} via {}: connect timed out", sess.id, sess.target, tag);
+                            return;
+                        }
+                    },
+                    r = client.read_buf(&mut first), if !have_first => match r {
+                        Ok(n) if n > 0 => have_first = true,
+                        // The client left before the connection was made.
+                        _ => return,
+                    },
+                    _ = guard.cancel.cancelled() => return,
                 }
-                Err(_) => {
-                    warn!(target: "sybau::route", "[{}] {} via {}: connect timed out", sess.id, sess.target, tag);
-                    return;
-                }
-            },
-            _ = guard.cancel.cancelled() => return,
+            }
         };
-        let client = CountedStream::new(stream, guard.counters.clone());
+        if !have_first {
+            // Server-speaks-first protocols send nothing; do not wait long.
+            let _ = tokio::time::timeout(FIRST_PAYLOAD_WAIT, client.read_buf(&mut first)).await;
+        }
+        let started = async {
+            if !first.is_empty() {
+                remote.write_all(&first).await?;
+            }
+            remote.flush().await
+        };
+        if let Err(e) = started.await {
+            warn!(target: "sybau::route", "[{}] {} via {}: {}", sess.id, sess.target, tag, e);
+            return;
+        }
+        drop(first);
         tokio::select! {
             r = relay(client, remote) => {
                 if let Err(e) = r {

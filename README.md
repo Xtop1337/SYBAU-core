@@ -21,7 +21,14 @@
 | Управляющий API (JSON-RPC через named pipe / unix-сокет) | готово, проверено на Linux; Windows — в CI |
 | C API: `start` / `stop` / `call`, callbacks событий и `protect` | готово, проверено C-программой на Linux |
 | Перезагрузка конфига без остановки (`core.reload`, `SIGHUP`) с откатом при ошибке | готово, проверено |
-| VLESS, VMess, Trojan, Shadowsocks, транспорты WS/gRPC/H2/HTTPUpgrade | в работе (этап 1) |
+| VLESS (TCP и UDP) | готово, проверено против Xray и sing-box |
+| VMess AEAD (alterId 0): aes-128-gcm, chacha20-poly1305, none, zero; TCP и UDP | готово, проверено против Xray и sing-box |
+| Trojan (TCP и UDP) | готово, проверено против Xray и sing-box |
+| Shadowsocks AEAD (aes-128/192/256-gcm, chacha20, xchacha20) и 2022 (blake3), multi-user, TCP и UDP | готово, проверено против Xray и sing-box |
+| SOCKS5 (с UDP) и HTTP CONNECT как upstream-прокси | готово, проверено против sing-box |
+| Транспорты: TCP с HTTP-обфускацией, WebSocket с early data, HTTPUpgrade, gRPC (gun и multi), HTTP/2 | готово, проверено против Xray и sing-box |
+| TLS 1.2/1.3 (rustls): SNI, ALPN, `insecure`, пиннинг сертификата | готово, проверено |
+| VLESS XUDP, Mux.Cool, VMess `authenticated_length` | не начато (этап 2) |
 | uTLS-отпечатки, REALITY, XTLS Vision, Mux | не начато (этап 2) |
 | Роутинг по правилам, geosite/geoip, sniffing, DNS | не начато (этап 3) |
 | Конфиги Xray / sing-box, ссылки, подписки, `convert`, системный прокси Windows | не начато (этап 4) |
@@ -30,6 +37,20 @@
 | Серверные inbound, REALITY-сервер, TProxy | не начато (этап 7) |
 | ShadowTLS, AnyTLS, Snell, SSH, Tor, WireGuard, ECH, обход DPI | не начато (этап 8) |
 | Фаззинг, оптимизации, подписанные релизы | не начато (этап 9) |
+
+Полная таблица проверенных сочетаний протокол × транспорт — в
+[docs/INTEROP.md](docs/INTEROP.md): 60 сценариев против настоящих Xray-core
+26.3.27 и sing-box 1.14.4.
+
+Известные ограничения текущего этапа:
+
+- правила роутинга ещё нет: весь трафик идёт в `route.final`;
+- UDP у VLESS и VMess открывает отдельный поток на каждый адрес назначения
+  (XUDP появится на этапе 2);
+- HTTP/2 и gRPC соединения не посылают keepalive-ping: оборванное соединение
+  заменяется при следующем обращении;
+- корневые сертификаты — встроенный набор Mozilla (`webpki-roots`), системное
+  хранилище не читается.
 
 ## Сборка
 
@@ -64,6 +85,42 @@ sybau run -c config.json
   "route": { "final": "direct" }
 }
 ```
+
+Пример outbound-ов (общие блоки `tls` и `transport` одинаковы для VLESS,
+VMess и Trojan):
+
+```json
+{
+  "outbounds": [
+    {
+      "type": "vless", "tag": "proxy",
+      "server": "example.com", "port": 443,
+      "uuid": "b831381d-6324-4d53-ad4f-8cda48b30811",
+      "tls": { "server_name": "example.com", "alpn": ["http/1.1"] },
+      "transport": {
+        "type": "ws", "path": "/ws",
+        "max_early_data": 2048,
+        "early_data_header_name": "Sec-WebSocket-Protocol"
+      }
+    },
+    { "type": "vmess", "tag": "vm", "server": "1.2.3.4", "port": 10086,
+      "uuid": "b831381d-6324-4d53-ad4f-8cda48b30811", "security": "auto" },
+    { "type": "trojan", "tag": "tj", "server": "example.com", "port": 443,
+      "password": "secret", "tls": {},
+      "transport": { "type": "grpc", "service_name": "Svc" } },
+    { "type": "shadowsocks", "tag": "ss", "server": "1.2.3.4", "port": 8388,
+      "method": "2022-blake3-aes-128-gcm", "password": "<base64 ключ>" },
+    { "type": "socks", "tag": "up", "server": "127.0.0.1", "port": 1080 },
+    { "type": "direct", "tag": "chained", "detour": "proxy" }
+  ],
+  "route": { "final": "proxy" }
+}
+```
+
+| Блок | Поля |
+|---|---|
+| `tls` | `enabled`, `server_name`, `alpn`, `insecure`, `pinned_cert_sha256` (SHA-256 сертификата сервера; совпадения достаточно), `pinned_cert_chain_sha256` (как `pinnedPeerCertificateChainSha256` в Xray) |
+| `transport` | `tcp` (+`http_obfs`), `ws`, `httpupgrade`, `grpc` (`service_name`, `multi_mode`, `authority`), `http` (HTTP/2) |
 
 Команды:
 
@@ -107,6 +164,22 @@ cargo test --workspace
 
 ```bash
 tests/ffi/run.sh
+```
+
+Стенд совместимости (нужны Go, curl, openssl и python3):
+
+```bash
+tests/interop/build-refs.sh
+```
+
+```bash
+cargo build -p sybau && tests/interop/run.py
+```
+
+То же в Docker, с официальными образами Xray и sing-box:
+
+```bash
+docker build -f tests/interop/Dockerfile -t sybau-interop . && docker run --rm sybau-interop
 ```
 
 ## Лицензия

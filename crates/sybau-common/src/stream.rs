@@ -76,3 +76,101 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for PrefixedStream<S> {
         Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }
+
+/// Writes as much of `buf` as `inner` accepts; `Ready(Ok(()))` once `buf`
+/// is empty. The building block of every framing stream in the core.
+pub fn poll_drain<S: AsyncWrite + Unpin>(
+    inner: &mut S,
+    cx: &mut Context<'_>,
+    buf: &mut bytes::BytesMut,
+) -> Poll<io::Result<()>> {
+    while !buf.is_empty() {
+        let n = match Pin::new(&mut *inner).poll_write(cx, buf) {
+            Poll::Ready(Ok(n)) => n,
+            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+            Poll::Pending => return Poll::Pending,
+        };
+        if n == 0 {
+            return Poll::Ready(Err(io::ErrorKind::WriteZero.into()));
+        }
+        buf.advance(n);
+    }
+    Poll::Ready(Ok(()))
+}
+
+/// Stream that sends `header` in front of the first payload, in the same
+/// write, so that the handshake and the first data share one packet.
+/// If the application flushes before writing, the header goes out alone.
+///
+/// All outbound protocol streams follow this convention: nothing is sent
+/// until the first write or flush.
+pub struct HeaderStream<S> {
+    inner: S,
+    header: Option<Bytes>,
+    wbuf: bytes::BytesMut,
+}
+
+impl<S> HeaderStream<S> {
+    pub fn new(header: impl Into<Bytes>, inner: S) -> Self {
+        Self {
+            inner,
+            header: Some(header.into()),
+            wbuf: bytes::BytesMut::new(),
+        }
+    }
+}
+
+impl<S: AsyncRead + Unpin> AsyncRead for HeaderStream<S> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl<S: AsyncWrite + Unpin> AsyncWrite for HeaderStream<S> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        let this = &mut *self;
+        if let Some(header) = this.header.take() {
+            this.wbuf.extend_from_slice(&header);
+            this.wbuf.extend_from_slice(buf);
+            // The payload is now owned by `wbuf`; report it as written and
+            // let later calls finish the drain.
+            let _ = poll_drain(&mut this.inner, cx, &mut this.wbuf)?;
+            return Poll::Ready(Ok(buf.len()));
+        }
+        if !this.wbuf.is_empty() {
+            match poll_drain(&mut this.inner, cx, &mut this.wbuf) {
+                Poll::Ready(r) => r?,
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+        Pin::new(&mut this.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let this = &mut *self;
+        if let Some(header) = this.header.take() {
+            this.wbuf.extend_from_slice(&header);
+        }
+        match poll_drain(&mut this.inner, cx, &mut this.wbuf) {
+            Poll::Ready(r) => r?,
+            Poll::Pending => return Poll::Pending,
+        }
+        Pin::new(&mut this.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match self.as_mut().poll_flush(cx) {
+            Poll::Ready(r) => r?,
+            Poll::Pending => return Poll::Pending,
+        }
+        Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}

@@ -1,10 +1,15 @@
 //! Outbound construction and the built-in `direct` / `block` outbounds.
 
+pub mod proxy;
+pub mod shadowsocks;
+pub mod udp;
+pub mod upstream;
+
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use sybau_common::net::ProtectFn;
 use sybau_common::{
@@ -81,7 +86,11 @@ impl OutboundManager {
         };
         stack.pop();
         let tag: Arc<str> = Arc::from(cfg.tag.as_str());
-        let outbound: Arc<dyn Outbound> = match &cfg.kind {
+        // Proxy outbounds dial their server through the detour or directly.
+        let via = |detour: Option<Arc<dyn Dialer>>| {
+            detour.unwrap_or_else(|| ctx.system_dialer(SocketOpts::default()))
+        };
+        let built: Result<Arc<dyn Outbound>> = match &cfg.kind {
             OutboundKind::Direct(d) => {
                 let dialer = detour.unwrap_or_else(|| {
                     ctx.system_dialer(SocketOpts {
@@ -90,13 +99,33 @@ impl OutboundManager {
                         ..Default::default()
                     })
                 });
-                Arc::new(Direct {
+                Ok(Arc::new(Direct {
                     tag: tag.clone(),
                     dialer,
-                })
+                }))
             }
-            OutboundKind::Block => Arc::new(Block { tag: tag.clone() }),
+            OutboundKind::Block => Ok(Arc::new(Block { tag: tag.clone() })),
+            OutboundKind::Socks(c) => {
+                upstream::Socks5::new(tag.clone(), c, via(detour)).map(|o| Arc::new(o) as _)
+            }
+            OutboundKind::Http(c) => {
+                upstream::HttpConnect::new(tag.clone(), c, via(detour)).map(|o| Arc::new(o) as _)
+            }
+            OutboundKind::Vless(c) => {
+                proxy::Vless::new(tag.clone(), c, via(detour)).map(|o| Arc::new(o) as _)
+            }
+            OutboundKind::Vmess(c) => {
+                proxy::Vmess::new(tag.clone(), c, via(detour)).map(|o| Arc::new(o) as _)
+            }
+            OutboundKind::Trojan(c) => {
+                proxy::Trojan::new(tag.clone(), c, via(detour)).map(|o| Arc::new(o) as _)
+            }
+            OutboundKind::Shadowsocks(c) => {
+                shadowsocks::Shadowsocks::new(tag.clone(), c, via(detour)).map(|o| Arc::new(o) as _)
+            }
         };
+        let outbound =
+            built.with_context(|| format!("outbound `{}` ({})", cfg.tag, cfg.kind.type_name()))?;
         self.map.insert(tag, outbound.clone());
         Ok(outbound)
     }

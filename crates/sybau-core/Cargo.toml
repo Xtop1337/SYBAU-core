@@ -8,6 +8,8 @@ license.workspace = true
 [dependencies]
 sybau-common.workspace = true
 sybau-config.workspace = true
+sybau-proto.workspace = true
+sybau-transport.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 base64.workspace = true

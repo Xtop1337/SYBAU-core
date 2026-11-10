@@ -1,0 +1,29 @@
+[package]
+name = "sybau-proto"
+description = "SYBAU-CORE: proxy protocol codecs (VLESS, VMess, Trojan, Shadowsocks)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sybau-common.workspace = true
+aes = "0.8"
+aes-gcm = "0.10"
+async-trait.workspace = true
+base64.workspace = true
+blake3 = "1"
+bytes.workspace = true
+chacha20poly1305 = "0.10"
+crc32fast = "1"
+hkdf = "0.12"
+md-5 = "0.10"
+parking_lot.workspace = true
+rand.workspace = true
+sha1 = "0.10"
+sha2 = "0.10"
+sha3 = "0.10"
+tokio.workspace = true
+tokio-util = { workspace = true, features = ["io"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

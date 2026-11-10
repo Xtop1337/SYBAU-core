@@ -9,7 +9,9 @@ pub mod stream;
 pub use addr::{Host, Target};
 pub use net::{Dialer, Resolver, SocketOpts, SystemDialer, SystemResolver};
 pub use session::{Network, Session};
-pub use stream::{ArcPacketConn, AsyncStream, BoxStream, PacketConn, PrefixedStream};
+pub use stream::{
+    poll_drain, ArcPacketConn, AsyncStream, BoxStream, HeaderStream, PacketConn, PrefixedStream,
+};
 
 use std::io;
 

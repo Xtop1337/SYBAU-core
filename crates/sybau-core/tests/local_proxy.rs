@@ -79,6 +79,30 @@ async fn read_response(s: &mut TcpStream) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// A refused connection is closed without a response. Depending on the
+/// platform the client sees a clean EOF or a reset (Windows resets when
+/// the proxy closes a socket that still has unread request bytes).
+async fn assert_refused(s: &mut TcpStream) {
+    let mut out = Vec::new();
+    match tokio::time::timeout(Duration::from_secs(10), s.read_to_end(&mut out))
+        .await
+        .unwrap()
+    {
+        Ok(_) => assert!(
+            out.is_empty(),
+            "unexpected data: {:?}",
+            String::from_utf8_lossy(&out)
+        ),
+        Err(e) => assert!(
+            matches!(
+                e.kind(),
+                std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
+            ),
+            "unexpected error: {e}"
+        ),
+    }
+}
+
 async fn socks5_connect(
     proxy: u16,
     target: SocketAddr,
@@ -303,7 +327,7 @@ async fn block_outbound_and_reload() {
 
     let mut s = socks5_connect(port, origin, None).await.unwrap();
     s.write_all(b"GET / HTTP/1.1\r\n\r\n").await.unwrap();
-    assert_eq!(read_response(&mut s).await, "");
+    assert_refused(&mut s).await;
 
     // A broken config is rejected and the old one keeps running.
     let bad = json!({ "config": { "outbounds": [{"type": "direct", "tag": "a"}], "route": {"final": "missing"} } });
@@ -311,7 +335,7 @@ async fn block_outbound_and_reload() {
     assert!(engine.is_running().await);
     let mut s = socks5_connect(port, origin, None).await.unwrap();
     s.write_all(b"GET / HTTP/1.1\r\n\r\n").await.unwrap();
-    assert_eq!(read_response(&mut s).await, "");
+    assert_refused(&mut s).await;
 
     // A good config on the same port takes over.
     let good = json!({ "config": {
