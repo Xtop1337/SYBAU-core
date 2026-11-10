@@ -27,3 +27,4 @@ pub fn proto_err(msg: impl Into<String>) -> io::Error {
 
 pub mod outbound;
 pub use outbound::{Outbound, OutboundDialer};
+pub use stream::RawSwitch;

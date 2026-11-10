@@ -2,8 +2,10 @@
 
 Таблица создаётся командой `tests/interop/run.py --report docs/INTEROP.md`.
 SYBAU-CORE работает клиентом, сервером — настоящий Xray-core 26.3.27 или sing-box 1.14.4.
-TCP: GET, скачивание 8 МиБ, загрузка 2 МиБ со сверкой SHA-256 и сервис, который говорит первым.
-UDP: SOCKS5 UDP ASSOCIATE на два эхо-сервера, датаграммы 1, 100 и 1200 байт.
+
+- TCP: GET, скачивание 8 МиБ и загрузка 2 МиБ со сверкой SHA-256 — и по HTTPS (TLS 1.3 внутри туннеля), и по HTTP; плюс сервис, который говорит первым.
+- UDP: SOCKS5 UDP ASSOCIATE на два эхо-сервера, датаграммы 1, 100 и 1200 байт.
+- «rejected, as it must be» — негативный сценарий: соединение обязано быть отвергнуто.
 
 | Case | TCP | UDP |
 |---|---|---|
@@ -63,6 +65,44 @@ UDP: SOCKS5 UDP ASSOCIATE на два эхо-сервера, датаграмм�
 | `sing-box/socks5/no-auth` | pass | pass |
 | `sing-box/http-connect/auth` | pass | — |
 | `sing-box/http-connect+tls` | pass | — |
+| `xray/vless/tcp+tls/fingerprint-chrome` | pass | pass |
+| `xray/vless/tcp+tls/fingerprint-firefox` | pass | pass |
+| `xray/vless/tcp+tls/fingerprint-safari` | pass | pass |
+| `xray/vless/tcp+tls/fingerprint-ios` | pass | pass |
+| `xray/vless/tcp+tls/fingerprint-edge` | pass | pass |
+| `xray/vless/tcp+tls/fingerprint-qq` | pass | pass |
+| `xray/vless/tcp+tls/fingerprint-random` | pass | pass |
+| `xray/vless/tcp+tls/fingerprint-randomized` | pass | pass |
+| `xray/vless/ws+tls/fingerprint-chrome` | pass | pass |
+| `xray/trojan/grpc+tls/fingerprint-firefox` | pass | pass |
+| `sing-box/vless/tcp+tls/fingerprint-chrome` | pass | pass |
+| `sing-box/vless/tcp+tls/fingerprint-firefox` | pass | pass |
+| `sing-box/vless/tcp+tls/fingerprint-safari` | pass | pass |
+| `tls/fingerprint-with-wrong-pin-is-rejected` | rejected, as it must be | — |
+| `tls/fingerprint-self-signed-without-pin-is-rejected` | rejected, as it must be | — |
+| `xray/vless/tcp+tls/fragment-tlshello` | pass | pass |
+| `xray/vless/tcp+tls/fragment-tlshello-rustls` | pass | pass |
+| `xray/vless/tcp+tls/fragment-packets` | pass | pass |
+| `sing-box/vless/tcp+tls/fragment-tlshello` | pass | pass |
+| `xray/vless/vision+tls` | pass | pass |
+| `xray/vless/vision+tls/default-fingerprint` | pass | pass |
+| `sing-box/vless/vision+tls` | pass | pass |
+| `xray/vless/tcp/xudp` | pass | pass |
+| `sing-box/vless/tcp+tls/xudp` | pass | pass |
+| `xray/vless/reality/fingerprint-chrome` | pass | pass |
+| `xray/vless/reality/fingerprint-firefox` | pass | pass |
+| `xray/vless/reality/fingerprint-safari` | pass | pass |
+| `xray/vless/reality/fingerprint-ios` | pass | pass |
+| `xray/vless/reality/fingerprint-edge` | pass | pass |
+| `xray/vless/vision+reality` | pass | pass |
+| `xray/vless/vision+reality/fragment-tlshello` | pass | pass |
+| `xray/vless/reality/empty-short-id` | pass | pass |
+| `xray/vless/grpc+reality` | pass | pass |
+| `xray/trojan/reality` | pass | pass |
+| `sing-box/vless/reality` | pass | pass |
+| `sing-box/vless/vision+reality` | pass | pass |
+| `reality/wrong-public-key-is-rejected` | rejected, as it must be | — |
+| `reality/wrong-short-id-is-rejected` | rejected, as it must be | — |
 | `tls/insecure-accepts-self-signed` | pass | pass |
 | `tls/wrong-pin-is-rejected` | rejected, as it must be | — |
 | `tls/self-signed-without-pin-is-rejected` | rejected, as it must be | — |

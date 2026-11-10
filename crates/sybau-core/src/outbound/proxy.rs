@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use sybau_common::{ArcPacketConn, BoxStream, Dialer, HeaderStream, Outbound, Session, Target};
 use sybau_config::{TrojanOutbound, VlessOutbound, VmessOutbound};
 use sybau_proto::packet::{FramedPacketConn, LengthPrefixed, MessagePacketConn};
-use sybau_proto::{trojan, uuid, vless, vmess};
+use sybau_proto::{trojan, uuid, vless, vmess, xudp};
 use sybau_transport::Connector;
 
 use super::udp::PerDestination;
@@ -23,27 +23,75 @@ fn server_target(server: &str, port: u16) -> Result<Target> {
     Ok(Target::from_host(server, port))
 }
 
+/// How UDP is carried by a VLESS outbound.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum VlessUdp {
+    /// One VLESS stream per destination.
+    PerDestination,
+    /// One XUDP stream for all destinations.
+    Xudp,
+}
+
 pub struct Vless {
     tag: Arc<str>,
     connector: Arc<Connector>,
     uuid: [u8; 16],
+    vision: bool,
+    allow_udp443: bool,
+    udp: VlessUdp,
 }
 
 impl Vless {
     pub fn new(tag: Arc<str>, cfg: &VlessOutbound, dialer: Arc<dyn Dialer>) -> Result<Self> {
         let uuid = uuid::parse(&cfg.uuid).ok_or_else(|| anyhow!("invalid uuid `{}`", cfg.uuid))?;
         let server = server_target(&cfg.server, cfg.port)?;
-        let connector = Arc::new(Connector::new(
-            dialer,
-            server,
-            cfg.tls.as_ref(),
-            cfg.transport.as_ref(),
-        )?);
+        let (vision, allow_udp443) = match cfg.flow.as_deref().unwrap_or("") {
+            "" => (false, false),
+            "xtls-rprx-vision" => (true, false),
+            "xtls-rprx-vision-udp443" => (true, true),
+            other => bail!(
+                "unsupported flow `{other}` (use xtls-rprx-vision or xtls-rprx-vision-udp443)"
+            ),
+        };
+        let udp = match cfg.packet_encoding.as_deref().unwrap_or("") {
+            "xudp" => VlessUdp::Xudp,
+            "" | "none" if vision => VlessUdp::Xudp,
+            "" | "none" => VlessUdp::PerDestination,
+            other => bail!("unsupported packet_encoding `{other}` (use xudp or leave it unset)"),
+        };
+        let connector = if vision {
+            Connector::new_switchable(dialer, server, cfg.tls.as_ref(), cfg.transport.as_ref())?
+        } else {
+            Connector::new(dialer, server, cfg.tls.as_ref(), cfg.transport.as_ref())?
+        };
         Ok(Self {
             tag,
-            connector,
+            connector: Arc::new(connector),
             uuid,
+            vision,
+            allow_udp443,
+            udp,
         })
+    }
+
+    async fn open(
+        connector: &Connector,
+        uuid: &[u8; 16],
+        vision: bool,
+        command: u8,
+        target: &Target,
+    ) -> io::Result<BoxStream> {
+        if vision {
+            let tls = connector.connect_switchable().await?;
+            Ok(Box::new(sybau_proto::vision::VisionStream::new(
+                tls, uuid, command, target,
+            )))
+        } else {
+            let io = connector.connect().await?;
+            Ok(Box::new(vless::VlessStream::new(
+                io, uuid, None, command, target,
+            )))
+        }
     }
 }
 
@@ -57,35 +105,53 @@ impl Outbound for Vless {
     }
 
     async fn connect(&self, sess: &Session) -> io::Result<BoxStream> {
-        let io = self.connector.connect().await?;
-        Ok(Box::new(vless::VlessStream::new(
-            io,
+        Self::open(
+            &self.connector,
             &self.uuid,
-            None,
+            self.vision,
             vless::CMD_TCP,
             &sess.target,
-        )))
+        )
+        .await
     }
 
-    async fn bind(&self, _sess: &Session) -> io::Result<ArcPacketConn> {
-        let (connector, uuid) = (self.connector.clone(), self.uuid);
-        Ok(Arc::new(PerDestination::new(move |dst: Target| {
-            let connector = connector.clone();
-            async move {
-                let io = connector.connect().await?;
-                let stream: BoxStream = Box::new(vless::VlessStream::new(
-                    io,
-                    &uuid,
-                    None,
-                    vless::CMD_UDP,
-                    &dst,
-                ));
-                Ok(
-                    Arc::new(FramedPacketConn::new(stream, LengthPrefixed { peer: dst }))
-                        as ArcPacketConn,
+    async fn bind(&self, sess: &Session) -> io::Result<ArcPacketConn> {
+        if self.vision && sess.target.port == 443 && !self.allow_udp443 {
+            // Same policy as Xray: QUIC is refused so that browsers fall
+            // back to TCP, which Vision can carry without double encryption.
+            return Err(io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                "XTLS Vision rejects UDP to port 443 (use flow xtls-rprx-vision-udp443 to allow it)",
+            ));
+        }
+        match self.udp {
+            VlessUdp::Xudp => {
+                let stream = Self::open(
+                    &self.connector,
+                    &self.uuid,
+                    self.vision,
+                    vless::CMD_MUX,
+                    &sess.target,
                 )
+                .await?;
+                let codec = xudp::XudpCodec::new(xudp::global_id(sess.source), sess.target.clone());
+                Ok(Arc::new(FramedPacketConn::new(stream, codec)))
             }
-        })))
+            VlessUdp::PerDestination => {
+                let (connector, uuid) = (self.connector.clone(), self.uuid);
+                Ok(Arc::new(PerDestination::new(move |dst: Target| {
+                    let connector = connector.clone();
+                    async move {
+                        let stream =
+                            Self::open(&connector, &uuid, false, vless::CMD_UDP, &dst).await?;
+                        Ok(
+                            Arc::new(FramedPacketConn::new(stream, LengthPrefixed { peer: dst }))
+                                as ArcPacketConn,
+                        )
+                    }
+                })))
+            }
+        }
     }
 }
 

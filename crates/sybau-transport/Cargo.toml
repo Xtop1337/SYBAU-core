@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 sybau-common.workspace = true
 sybau-config.workspace = true
+sybau-tls.workspace = true
 anyhow.workspace = true
 base64.workspace = true
 bytes.workspace = true
@@ -18,10 +19,10 @@ parking_lot.workspace = true
 rand.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 sha1 = "0.10"
-sha2 = "0.10"
 tokio.workspace = true
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 tokio-util = { workspace = true, features = ["io"] }
 tracing.workspace = true
-webpki-roots = "1"
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

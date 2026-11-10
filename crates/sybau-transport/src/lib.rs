@@ -3,6 +3,7 @@
 //! A [`Connector`] turns "server address + TLS settings + transport
 //! settings" into a ready byte stream for a proxy protocol.
 
+pub mod fragment;
 pub mod h2;
 pub mod httpobfs;
 pub mod httpupgrade;
@@ -25,11 +26,20 @@ struct Base {
     dialer: Arc<dyn Dialer>,
     server: Target,
     tls: Option<TlsClient>,
+    fragment: Option<fragment::Fragment>,
 }
 
 impl Base {
-    async fn dial(&self) -> io::Result<BoxStream> {
+    async fn dial_tcp(&self) -> io::Result<BoxStream> {
         let tcp = self.dialer.dial_tcp(&self.server).await?;
+        Ok(match self.fragment {
+            Some(fragment) => Box::new(fragment::FragmentStream::new(tcp, fragment)),
+            None => tcp,
+        })
+    }
+
+    async fn dial(&self) -> io::Result<BoxStream> {
+        let tcp = self.dial_tcp().await?;
         match &self.tls {
             Some(tls) => tls.connect(tcp).await,
             None => Ok(tcp),
@@ -87,19 +97,53 @@ impl Connector {
         tls: Option<&TlsConfig>,
         transport: Option<&TransportConfig>,
     ) -> Result<Self> {
+        Self::build(dialer, server, tls, transport, false)
+    }
+
+    /// Connector for XTLS Vision: TLS (or REALITY) directly over TCP, with
+    /// streams that can switch to raw mode.
+    pub fn new_switchable(
+        dialer: Arc<dyn Dialer>,
+        server: Target,
+        tls: Option<&TlsConfig>,
+        transport: Option<&TransportConfig>,
+    ) -> Result<Self> {
+        let plain_tcp = match transport {
+            None => true,
+            Some(TransportConfig::Tcp(t)) => t.http_obfs.is_none(),
+            Some(_) => false,
+        };
+        if !plain_tcp || !tls.is_some_and(|t| t.enabled) {
+            bail!("xtls-rprx-vision works only over plain TCP with TLS or REALITY");
+        }
+        Self::build(dialer, server, tls, transport, true)
+    }
+
+    fn build(
+        dialer: Arc<dyn Dialer>,
+        server: Target,
+        tls: Option<&TlsConfig>,
+        transport: Option<&TransportConfig>,
+        raw_switch: bool,
+    ) -> Result<Self> {
         let default_alpn: &[&str] = match transport {
             Some(TransportConfig::Ws(_) | TransportConfig::HttpUpgrade(_)) => &["http/1.1"],
             Some(TransportConfig::Grpc(_) | TransportConfig::Http(_)) => &["h2"],
             _ => &[],
         };
+        let fragment = match tls.and_then(|t| t.fragment.as_ref()) {
+            Some(f) => Some(fragment::Fragment::from_config(f)?),
+            None => None,
+        };
         let tls = match tls.filter(|t| t.enabled) {
-            Some(cfg) => Some(TlsClient::new(cfg, &server, default_alpn)?),
+            Some(cfg) => Some(TlsClient::new(cfg, &server, default_alpn, raw_switch)?),
             None => None,
         };
         let base = Arc::new(Base {
             dialer,
             server,
             tls,
+            fragment,
         });
         let default_host = base.default_host();
         let kind = match transport {
@@ -219,6 +263,19 @@ impl Connector {
             }
         }
         Ok(Self { base, kind })
+    }
+
+    /// Opens a TLS stream that can switch to raw mode. Only for
+    /// connectors made with [`new_switchable`](Self::new_switchable).
+    pub async fn connect_switchable(&self) -> io::Result<sybau_tls::TlsStream<BoxStream>> {
+        let tcp = self.base.dial_tcp().await?;
+        match &self.base.tls {
+            Some(tls) => tls.connect_switchable(tcp).await,
+            None => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "no TLS configured",
+            )),
+        }
     }
 
     /// Opens a new stream to the server. Depending on the transport the

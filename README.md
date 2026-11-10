@@ -28,8 +28,14 @@
 | SOCKS5 (с UDP) и HTTP CONNECT как upstream-прокси | готово, проверено против sing-box |
 | Транспорты: TCP с HTTP-обфускацией, WebSocket с early data, HTTPUpgrade, gRPC (gun и multi), HTTP/2 | готово, проверено против Xray и sing-box |
 | TLS 1.2/1.3 (rustls): SNI, ALPN, `insecure`, пиннинг сертификата | готово, проверено |
-| VLESS XUDP, Mux.Cool, VMess `authenticated_length` | не начато (этап 2) |
-| uTLS-отпечатки, REALITY, XTLS Vision, Mux | не начато (этап 2) |
+| uTLS-отпечатки: `chrome`, `firefox`, `safari`, `ios`, `edge`, `qq`, `random`, `randomized` (шаблоны ClientHello выгружены из uTLS, которую использует Xray) | готово, проверено против Xray и sing-box |
+| REALITY-клиент (public key, short id) | готово, проверено против Xray и sing-box |
+| XTLS Vision (`xtls-rprx-vision`, `-udp443`), включая direct copy | готово, проверено против Xray и sing-box |
+| XUDP (`packet_encoding: xudp`) | готово, проверено против Xray и sing-box |
+| Фрагментация ClientHello (`fragment`: `tlshello` или диапазон пакетов) для прокси и для `direct` | готово, проверено против Xray и sing-box |
+| Свой TLS 1.3 клиент: X25519, P-256, X25519MLKEM768, HelloRetryRequest, KeyUpdate, сжатые сертификаты | готово, проверено (rustls, Go TLS) |
+| Отпечатки `360` и `android` (предлагают только TLS 1.2), TLS 1.2 с отпечатком | не начато |
+| Mux.Cool, VMess `authenticated_length`, REALITY spiderX, ML-DSA-проверка REALITY | не начато |
 | Роутинг по правилам, geosite/geoip, sniffing, DNS | не начато (этап 3) |
 | Конфиги Xray / sing-box, ссылки, подписки, `convert`, системный прокси Windows | не начато (этап 4) |
 | TUN (Wintun, auto-route, kill switch) | не начато (этап 5) |
@@ -39,7 +45,7 @@
 | Фаззинг, оптимизации, подписанные релизы | не начато (этап 9) |
 
 Полная таблица проверенных сочетаний протокол × транспорт — в
-[docs/INTEROP.md](docs/INTEROP.md): 60 сценариев против настоящих Xray-core
+[docs/INTEROP.md](docs/INTEROP.md): 98 сценариев против настоящих Xray-core
 26.3.27 и sing-box 1.14.4.
 
 Известные ограничения текущего этапа:
@@ -50,7 +56,15 @@
 - HTTP/2 и gRPC соединения не посылают keepalive-ping: оборванное соединение
   заменяется при следующем обращении;
 - корневые сертификаты — встроенный набор Mozilla (`webpki-roots`), системное
-  хранилище не читается.
+  хранилище не читается;
+- с `fingerprint`, REALITY и Vision работает собственный TLS-клиент, он умеет
+  только TLS 1.3: если сервер согласует TLS 1.2, соединение завершится понятной
+  ошибкой (без `fingerprint` используется rustls с TLS 1.2 и 1.3);
+- при неудачной проверке REALITY соединение закрывается; имитация обхода сайта
+  (spiderX) не реализована.
+
+Конфиг разбирается строго: неизвестное поле — ошибка с указанием, в каком
+inbound/outbound она находится.
 
 ## Сборка
 
@@ -119,8 +133,26 @@ VMess и Trojan):
 
 | Блок | Поля |
 |---|---|
-| `tls` | `enabled`, `server_name`, `alpn`, `insecure`, `pinned_cert_sha256` (SHA-256 сертификата сервера; совпадения достаточно), `pinned_cert_chain_sha256` (как `pinnedPeerCertificateChainSha256` в Xray) |
+| `tls` | `enabled`, `server_name`, `alpn`, `insecure`, `pinned_cert_sha256` (SHA-256 сертификата сервера; совпадения достаточно), `pinned_cert_chain_sha256` (как `pinnedPeerCertificateChainSha256` в Xray), `fingerprint`, `reality` (`public_key`, `short_id`), `fragment` (`packets`, `length`, `interval`, `max_split`) |
+| `vless` | `uuid`, `flow` (`xtls-rprx-vision`), `packet_encoding` (`xudp`) |
 | `transport` | `tcp` (+`http_obfs`), `ws`, `httpupgrade`, `grpc` (`service_name`, `multi_mode`, `authority`), `http` (HTTP/2) |
+
+VLESS + Vision + REALITY с отпечатком Chrome и фрагментацией ClientHello:
+
+```json
+{
+  "type": "vless", "tag": "reality",
+  "server": "203.0.113.10", "port": 443,
+  "uuid": "b831381d-6324-4d53-ad4f-8cda48b30811",
+  "flow": "xtls-rprx-vision",
+  "tls": {
+    "server_name": "www.example.com",
+    "fingerprint": "chrome",
+    "reality": { "public_key": "<pbk>", "short_id": "0123abcd" },
+    "fragment": { "packets": "tlshello", "length": "100-200", "interval": "10-20" }
+  }
+}
+```
 
 Команды:
 
@@ -164,6 +196,13 @@ cargo test --workspace
 
 ```bash
 tests/ffi/run.sh
+```
+
+Шаблоны отпечатков (`crates/sybau-tls/src/fingerprints.json`) пересоздаются из
+uTLS той же ревизии, что в Xray:
+
+```bash
+cd tools/utls-dump && go run . > ../../crates/sybau-tls/src/fingerprints.json
 ```
 
 Стенд совместимости (нужны Go, curl, openssl и python3):

@@ -99,10 +99,17 @@ impl OutboundManager {
                         ..Default::default()
                     })
                 });
-                Ok(Arc::new(Direct {
-                    tag: tag.clone(),
-                    dialer,
-                }))
+                {
+                    let fragment = match &d.fragment {
+                        Some(f) => Some(sybau_transport::fragment::Fragment::from_config(f)?),
+                        None => None,
+                    };
+                    Ok(Arc::new(Direct {
+                        tag: tag.clone(),
+                        dialer,
+                        fragment,
+                    }))
+                }
             }
             OutboundKind::Block => Ok(Arc::new(Block { tag: tag.clone() })),
             OutboundKind::Socks(c) => {
@@ -144,6 +151,7 @@ impl OutboundManager {
 pub struct Direct {
     tag: Arc<str>,
     dialer: Arc<dyn Dialer>,
+    fragment: Option<sybau_transport::fragment::Fragment>,
 }
 
 #[async_trait]
@@ -155,7 +163,13 @@ impl Outbound for Direct {
         "direct"
     }
     async fn connect(&self, sess: &Session) -> io::Result<BoxStream> {
-        self.dialer.dial_tcp(&sess.target).await
+        let tcp = self.dialer.dial_tcp(&sess.target).await?;
+        Ok(match self.fragment {
+            Some(fragment) => Box::new(sybau_transport::fragment::FragmentStream::new(
+                tcp, fragment,
+            )),
+            None => tcp,
+        })
     }
     async fn bind(&self, sess: &Session) -> io::Result<ArcPacketConn> {
         self.dialer.dial_udp(&sess.target).await

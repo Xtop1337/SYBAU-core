@@ -136,6 +136,51 @@ mod tests {
     }
 
     #[test]
+    fn unknown_fields_are_errors_with_context() {
+        let err = |text: &str| format!("{:#}", parse_native(text).unwrap_err());
+        assert!(err(r#"{"inbound": []}"#).contains("inbound"));
+        assert!(err(r#"{"log": {"levle": "info"}}"#).contains("levle"));
+        let e = err(r#"{"outbounds":[{"type":"direct","tag":"d","bind_iface":"eth0"}]}"#);
+        assert!(
+            e.contains("outbound `d`") && e.contains("bind_iface"),
+            "{e}"
+        );
+        let e = err(
+            r#"{"outbounds":[{"type":"vless","tag":"v","server":"s","port":1,"uuid":"u","tls":{"sni":"x"}}]}"#,
+        );
+        assert!(e.contains("outbound `v`") && e.contains("sni"), "{e}");
+        let e = err(
+            r#"{"outbounds":[{"type":"vless","tag":"v","server":"s","port":1,"uuid":"u","transport":{"type":"ws","pth":"/"}}]}"#,
+        );
+        assert!(e.contains("pth"), "{e}");
+        let e = err(r#"{"inbounds":[{"type":"mixed","tag":"m","port":1,"sniffing":true}]}"#);
+        assert!(e.contains("inbound `m`") && e.contains("sniffing"), "{e}");
+        assert!(err(r#"{"outbounds":[{"type":"teleport","tag":"t"}]}"#).contains("teleport"));
+        assert!(err(r#"{"outbounds":[{"type":"direct"}]}"#).contains("without `tag`"));
+    }
+
+    #[test]
+    fn config_survives_a_serialization_roundtrip() {
+        let text = r#"{
+          "inbounds": [{"type": "mixed", "tag": "in", "port": 2080, "users": [{"username": "u", "password": "p"}]}],
+          "outbounds": [
+            {"type": "vless", "tag": "v", "server": "example.com", "port": 443, "uuid": "u", "flow": "xtls-rprx-vision",
+             "tls": {"server_name": "example.com", "fingerprint": "chrome",
+                     "reality": {"public_key": "k", "short_id": "ab"},
+                     "fragment": {"packets": "tlshello", "length": "10-20", "interval": "1-2"}}},
+            {"type": "trojan", "tag": "t", "server": "s", "port": 1, "password": "p", "detour": "v",
+             "transport": {"type": "grpc", "service_name": "x"}},
+            {"type": "block", "tag": "b"}
+          ],
+          "route": {"final": "v"}
+        }"#;
+        let cfg = parse_native(text).unwrap();
+        let again = parse_native(&cfg.to_json_pretty()).unwrap();
+        assert_eq!(cfg.to_json_pretty(), again.to_json_pretty());
+        assert_eq!(again.outbounds[1].detour.as_deref(), Some("v"));
+    }
+
+    #[test]
     fn bad_references_are_rejected() {
         assert!(parse_native(
             r#"{"outbounds":[{"type":"direct","tag":"a"},{"type":"direct","tag":"a"}]}"#

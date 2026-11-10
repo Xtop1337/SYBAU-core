@@ -8,7 +8,7 @@ fn default_listen() -> String {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct Config {
     pub log: LogConfig,
     pub control: ControlConfig,
@@ -18,7 +18,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct LogConfig {
     /// `trace`, `debug`, `info`, `warn`, `error` or `off`.
     pub level: String,
@@ -34,7 +34,7 @@ impl Default for LogConfig {
 
 /// Control channel (JSON-RPC over a named pipe / unix socket).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct ControlConfig {
     pub enabled: bool,
     /// Overrides the endpoint. Default: `\\.\pipe\sybau-core-<profile>` on
@@ -52,12 +52,36 @@ impl Default for ControlConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct InboundConfig {
-    #[serde(default)]
     pub tag: String,
     #[serde(flatten)]
     pub kind: InboundKind,
+}
+
+/// Takes an optional string field out of a JSON object.
+fn take_string<E: serde::de::Error>(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<Option<String>, E> {
+    match map.remove(key) {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(s)) => Ok(Some(s)),
+        Some(_) => Err(E::custom(format!("`{key}` must be a string"))),
+    }
+}
+
+// Written by hand instead of `#[serde(flatten)]` so that unknown fields
+// are rejected: a typo in a config must not be silently ignored.
+impl<'de> Deserialize<'de> for InboundConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let mut map = serde_json::Map::deserialize(deserializer)?;
+        let tag = take_string(&mut map, "tag")?.unwrap_or_default();
+        let kind = InboundKind::deserialize(serde_json::Value::Object(map))
+            .map_err(|e| D::Error::custom(format!("inbound `{tag}`: {e}")))?;
+        Ok(Self { tag, kind })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +104,7 @@ impl InboundKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LocalProxyInbound {
     #[serde(default = "default_listen")]
     pub listen: String,
@@ -93,19 +118,33 @@ pub struct LocalProxyInbound {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UserPass {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct OutboundConfig {
     pub tag: String,
     /// Dial this outbound through another one (proxy chain).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub detour: Option<String>,
     #[serde(flatten)]
     pub kind: OutboundKind,
+}
+
+impl<'de> Deserialize<'de> for OutboundConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let mut map = serde_json::Map::deserialize(deserializer)?;
+        let tag = take_string(&mut map, "tag")?
+            .ok_or_else(|| D::Error::custom("outbound without `tag`"))?;
+        let detour = take_string(&mut map, "detour")?;
+        let kind = OutboundKind::deserialize(serde_json::Value::Object(map))
+            .map_err(|e| D::Error::custom(format!("outbound `{tag}`: {e}")))?;
+        Ok(Self { tag, detour, kind })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,7 +178,7 @@ impl OutboundKind {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct DirectOutbound {
     /// Bind outgoing sockets to this interface.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -147,10 +186,14 @@ pub struct DirectOutbound {
     /// Linux `SO_MARK` for outgoing sockets.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fwmark: Option<u32>,
+    /// Split the first packets of every TCP connection (DPI evasion for
+    /// direct connections).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fragment: Option<FragmentConfig>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct RouteConfig {
     /// Outbound for traffic no rule matched. Default: the first outbound.
     #[serde(rename = "final", skip_serializing_if = "Option::is_none")]
@@ -158,6 +201,7 @@ pub struct RouteConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpstreamProxy {
     pub server: String,
     pub port: u16,
@@ -171,10 +215,19 @@ pub struct UpstreamProxy {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VlessOutbound {
     pub server: String,
     pub port: u16,
     pub uuid: String,
+    /// `xtls-rprx-vision`, or `xtls-rprx-vision-udp443` to also allow
+    /// UDP to port 443 (QUIC). Needs TLS or REALITY over plain TCP.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow: Option<String>,
+    /// `xudp`: all UDP destinations share one stream with full cone NAT.
+    /// Unset: one stream per destination. Vision always uses `xudp`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub packet_encoding: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tls: Option<TlsConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -182,6 +235,7 @@ pub struct VlessOutbound {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VmessOutbound {
     pub server: String,
     pub port: u16,
@@ -202,6 +256,7 @@ pub struct VmessOutbound {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TrojanOutbound {
     pub server: String,
     pub port: u16,
@@ -213,6 +268,7 @@ pub struct TrojanOutbound {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ShadowsocksOutbound {
     pub server: String,
     pub port: u16,
@@ -230,7 +286,7 @@ fn default_auto() -> String {
 
 /// TLS towards the server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct TlsConfig {
     pub enabled: bool,
     /// SNI and the name the certificate is checked against.
@@ -251,6 +307,43 @@ pub struct TlsConfig {
     /// chain, checked in addition to normal verification.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pinned_cert_chain_sha256: Vec<String>,
+    /// Imitate the ClientHello of a browser (uTLS): `chrome`, `firefox`,
+    /// `safari`, `ios`, `android`, `edge`, `360`, `qq`, `random`,
+    /// `randomized`. Requires a TLS 1.3 server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
+    /// REALITY instead of certificate validation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reality: Option<RealityConfig>,
+    /// Split the ClientHello to get past DPI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fragment: Option<FragmentConfig>,
+}
+
+/// Fragmentation of outgoing TCP data (Xray `fragment`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FragmentConfig {
+    /// `tlshello`: split the TLS ClientHello into several TLS records.
+    /// `1-3`: cut writes number 1 to 3 into TCP segments.
+    pub packets: String,
+    /// Size of a piece in bytes, e.g. `100-200`.
+    pub length: String,
+    /// Pause between pieces in milliseconds, e.g. `10-20`.
+    pub interval: String,
+    /// Upper bound of pieces per write, e.g. `3-5`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_split: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RealityConfig {
+    /// Server public key (base64url), `pbk` in share links.
+    pub public_key: String,
+    /// Hex short id, `sid` in share links. May be empty.
+    #[serde(default)]
+    pub short_id: String,
 }
 
 impl Default for TlsConfig {
@@ -262,6 +355,9 @@ impl Default for TlsConfig {
             insecure: false,
             pinned_cert_sha256: Vec::new(),
             pinned_cert_chain_sha256: Vec::new(),
+            fingerprint: None,
+            reality: None,
+            fragment: None,
         }
     }
 }
@@ -288,7 +384,7 @@ fn default_path() -> String {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct TcpTransport {
     /// Xray `tcpSettings.header.type = "http"`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -296,6 +392,7 @@ pub struct TcpTransport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HttpObfs {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub host: Vec<String>,
@@ -308,6 +405,7 @@ pub struct HttpObfs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WsTransport {
     #[serde(default = "default_path")]
     pub path: String,
@@ -330,6 +428,7 @@ fn is_zero(n: &usize) -> bool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HttpUpgradeTransport {
     #[serde(default = "default_path")]
     pub path: String,
@@ -340,7 +439,7 @@ pub struct HttpUpgradeTransport {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields, default)]
 pub struct GrpcTransport {
     pub service_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -353,6 +452,7 @@ pub struct GrpcTransport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Http2Transport {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub host: Vec<String>,

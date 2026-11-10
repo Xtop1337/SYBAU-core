@@ -174,3 +174,17 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for HeaderStream<S> {
         Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }
+
+/// Streams that can stop encrypting in one or both directions.
+///
+/// XTLS Vision uses this once it has seen that the proxied traffic is
+/// itself TLS 1.3: from then on the inner records travel on the bare TCP
+/// connection instead of being encrypted a second time.
+pub trait RawSwitch {
+    /// Everything read from now on, including bytes already received but
+    /// not yet decrypted, is delivered as it arrived.
+    fn switch_read_to_raw(&mut self);
+    /// Everything written from now on goes to the transport unchanged,
+    /// after the data already encrypted has been sent.
+    fn switch_write_to_raw(&mut self);
+}

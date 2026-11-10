@@ -12,5 +12,7 @@ pub mod packet;
 pub mod shadowsocks;
 pub mod trojan;
 pub mod uuid;
+pub mod vision;
 pub mod vless;
 pub mod vmess;
+pub mod xudp;

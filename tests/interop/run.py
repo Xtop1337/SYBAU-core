@@ -5,8 +5,9 @@ For every case a reference server (Xray or sing-box) is started on
 loopback, `sybau` is started with a mixed inbound and an outbound for the
 case, and traffic is pushed through the pair:
 
-  * TCP: small GET, 8 MiB download, 2 MiB upload (checksums compared),
-         and a server-speaks-first service;
+  * TCP: GET, 8 MiB download and 2 MiB upload (checksums compared), both
+         over HTTPS (TLS 1.3 inside the tunnel) and plain HTTP, and a
+         server-speaks-first service;
   * UDP: SOCKS5 UDP ASSOCIATE to two echo servers, several datagram sizes.
 
 Usage: run.py [--filter SUBSTRING] [--list] [--keep-logs]
@@ -23,6 +24,7 @@ import os
 import shutil
 import socket
 import socketserver
+import ssl
 import struct
 import subprocess
 import sys
@@ -146,6 +148,24 @@ def wait_port(port, proc, timeout=10.0):
 # Certificate for the TLS cases
 # --------------------------------------------------------------------------
 
+def reality_keys():
+    """X25519 key pair as printed by `xray x25519`: (private, public)."""
+    out = subprocess.run([XRAY, "x25519"], check=True, capture_output=True, text=True).stdout
+    values = [line.split(":", 1)[1].strip() for line in out.splitlines() if ":" in line]
+    return values[0], values[1]
+
+
+def start_tls_site(port, cert, key):
+    """A TLS 1.3 web server: HTTPS origin for inner-TLS traffic and the
+    site that REALITY servers borrow their handshake from."""
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_3
+    ctx.load_cert_chain(cert, key)
+    server = ThreadedHTTP(("127.0.0.1", port), Origin)
+    server.socket = ctx.wrap_socket(server.socket, server_side=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+
 def make_cert():
     cert, key = os.path.join(WORK, "cert.pem"), os.path.join(WORK, "key.pem")
     subprocess.run(
@@ -171,7 +191,7 @@ class Case:
         self.expect_fail = expect_fail
 
 
-def build_cases(cert, key, pin):
+def build_cases(cert, key, pin, reality=None):
     cases = []
     tls_client = {"server_name": SNI, "pinned_cert_sha256": [pin]}
     xtls = {"security": "tls", "tlsSettings": {"certificates": [{"certificateFile": cert, "keyFile": key}]}}
@@ -339,6 +359,127 @@ def build_cases(cert, key, pin):
     cases.append(Case("sing-box/http-connect+tls", "sing-box", {"type": "http", "tls": stls},
                       {"type": "http", "tls": tls_client}, udp=False))
 
+    # ---- Browser fingerprints (uTLS templates) --------------------------
+    vless_tls_in = {"protocol": "vless", "settings": {"clients": [{"id": UUID}], "decryption": "none"},
+                    "streamSettings": dict(xtls)}
+    for fp in ["chrome", "firefox", "safari", "ios", "edge", "qq", "random", "randomized"]:
+        cases.append(Case(f"xray/vless/tcp+tls/fingerprint-{fp}", "xray", vless_tls_in,
+                          {"type": "vless", "uuid": UUID, "tls": {**tls_client, "fingerprint": fp}}))
+    cases.append(Case(
+        "xray/vless/ws+tls/fingerprint-chrome", "xray",
+        {"protocol": "vless", "settings": {"clients": [{"id": UUID}], "decryption": "none"},
+         "streamSettings": {"network": "ws", "wsSettings": {"path": "/ws"}, **xtls}},
+        {"type": "vless", "uuid": UUID, "tls": {**tls_client, "fingerprint": "chrome"},
+         "transport": {"type": "ws", "path": "/ws"}}))
+    cases.append(Case(
+        "xray/trojan/grpc+tls/fingerprint-firefox", "xray",
+        {"protocol": "trojan", "settings": {"clients": [{"password": PASSWORD}]},
+         "streamSettings": {"network": "grpc", "grpcSettings": {"serviceName": "Tj"}, **xtls}},
+        {"type": "trojan", "password": PASSWORD, "tls": {**tls_client, "fingerprint": "firefox"},
+         "transport": {"type": "grpc", "service_name": "Tj"}}))
+    for fp in ["chrome", "firefox", "safari"]:
+        cases.append(Case(f"sing-box/vless/tcp+tls/fingerprint-{fp}", "sing-box",
+                          {"type": "vless", "users": [{"uuid": UUID}], "tls": stls},
+                          {"type": "vless", "uuid": UUID, "tls": {**tls_client, "fingerprint": fp}}))
+    cases.append(Case("tls/fingerprint-with-wrong-pin-is-rejected", "xray", vless_tls_in,
+                      {"type": "vless", "uuid": UUID,
+                       "tls": {"server_name": SNI, "fingerprint": "chrome", "pinned_cert_sha256": ["00" * 32]}},
+                      expect_fail=True))
+    cases.append(Case("tls/fingerprint-self-signed-without-pin-is-rejected", "xray", vless_tls_in,
+                      {"type": "vless", "uuid": UUID, "tls": {"server_name": SNI, "fingerprint": "chrome"}},
+                      expect_fail=True))
+
+    # ---- ClientHello fragmentation -------------------------------------
+    frag_hello = {"packets": "tlshello", "length": "40-90", "interval": "1-3"}
+    frag_tcp = {"packets": "1-2", "length": "30-60", "interval": "1-2"}
+    cases.append(Case("xray/vless/tcp+tls/fragment-tlshello", "xray", vless_tls_in,
+                      {"type": "vless", "uuid": UUID, "tls": {**tls_client, "fingerprint": "chrome", "fragment": frag_hello}}))
+    cases.append(Case("xray/vless/tcp+tls/fragment-tlshello-rustls", "xray", vless_tls_in,
+                      {"type": "vless", "uuid": UUID, "tls": {**tls_client, "fragment": frag_hello}}))
+    cases.append(Case("xray/vless/tcp+tls/fragment-packets", "xray", vless_tls_in,
+                      {"type": "vless", "uuid": UUID, "tls": {**tls_client, "fingerprint": "firefox", "fragment": frag_tcp}}))
+    cases.append(Case("sing-box/vless/tcp+tls/fragment-tlshello", "sing-box",
+                      {"type": "vless", "users": [{"uuid": UUID}], "tls": stls},
+                      {"type": "vless", "uuid": UUID, "tls": {**tls_client, "fingerprint": "chrome", "fragment": frag_hello}}))
+
+    # ---- XTLS Vision and XUDP -------------------------------------------
+    vision_clients = [{"id": UUID, "flow": "xtls-rprx-vision"}]
+    cases.append(Case(
+        "xray/vless/vision+tls", "xray",
+        {"protocol": "vless", "settings": {"clients": vision_clients, "decryption": "none"}, "streamSettings": dict(xtls)},
+        {"type": "vless", "uuid": UUID, "flow": "xtls-rprx-vision", "tls": {**tls_client, "fingerprint": "chrome"}}))
+    cases.append(Case(
+        "xray/vless/vision+tls/default-fingerprint", "xray",
+        {"protocol": "vless", "settings": {"clients": vision_clients, "decryption": "none"}, "streamSettings": dict(xtls)},
+        {"type": "vless", "uuid": UUID, "flow": "xtls-rprx-vision", "tls": tls_client}))
+    cases.append(Case(
+        "sing-box/vless/vision+tls", "sing-box",
+        {"type": "vless", "users": [{"uuid": UUID, "flow": "xtls-rprx-vision"}], "tls": stls},
+        {"type": "vless", "uuid": UUID, "flow": "xtls-rprx-vision", "tls": {**tls_client, "fingerprint": "firefox"}}))
+    cases.append(Case(
+        "xray/vless/tcp/xudp", "xray",
+        {"protocol": "vless", "settings": {"clients": [{"id": UUID}], "decryption": "none"}},
+        {"type": "vless", "uuid": UUID, "packet_encoding": "xudp"}))
+    cases.append(Case(
+        "sing-box/vless/tcp+tls/xudp", "sing-box",
+        {"type": "vless", "users": [{"uuid": UUID}], "tls": stls},
+        {"type": "vless", "uuid": UUID, "packet_encoding": "xudp", "tls": tls_client}))
+
+    # ---- REALITY ---------------------------------------------------------
+    if reality:
+        private, public, site_port = reality
+        short_id = "0123abcd"
+        xreality = {"security": "reality", "realitySettings": {
+            "target": f"127.0.0.1:{site_port}", "serverNames": [SNI], "privateKey": private, "shortIds": [short_id, ""]}}
+        sreality = {"enabled": True, "server_name": SNI, "reality": {
+            "enabled": True, "handshake": {"server": "127.0.0.1", "server_port": site_port},
+            "private_key": private, "short_id": [short_id]}}
+
+        def reality_client(fp="chrome", key=public, sid=short_id):
+            return {"server_name": SNI, "fingerprint": fp, "reality": {"public_key": key, "short_id": sid}}
+
+        for fp in ["chrome", "firefox", "safari", "ios", "edge"]:
+            cases.append(Case(
+                f"xray/vless/reality/fingerprint-{fp}", "xray",
+                {"protocol": "vless", "settings": {"clients": [{"id": UUID}], "decryption": "none"}, "streamSettings": dict(xreality)},
+                {"type": "vless", "uuid": UUID, "tls": reality_client(fp)}))
+        cases.append(Case(
+            "xray/vless/vision+reality", "xray",
+            {"protocol": "vless", "settings": {"clients": vision_clients, "decryption": "none"}, "streamSettings": dict(xreality)},
+            {"type": "vless", "uuid": UUID, "flow": "xtls-rprx-vision", "tls": reality_client()}))
+        cases.append(Case(
+            "xray/vless/vision+reality/fragment-tlshello", "xray",
+            {"protocol": "vless", "settings": {"clients": vision_clients, "decryption": "none"}, "streamSettings": dict(xreality)},
+            {"type": "vless", "uuid": UUID, "flow": "xtls-rprx-vision", "tls": {**reality_client(), "fragment": frag_hello}}))
+        cases.append(Case(
+            "xray/vless/reality/empty-short-id", "xray",
+            {"protocol": "vless", "settings": {"clients": [{"id": UUID}], "decryption": "none"}, "streamSettings": dict(xreality)},
+            {"type": "vless", "uuid": UUID, "tls": reality_client(sid="")}))
+        cases.append(Case(
+            "xray/vless/grpc+reality", "xray",
+            {"protocol": "vless", "settings": {"clients": [{"id": UUID}], "decryption": "none"},
+             "streamSettings": {"network": "grpc", "grpcSettings": {"serviceName": "Svc"}, **xreality}},
+            {"type": "vless", "uuid": UUID, "tls": reality_client(), "transport": {"type": "grpc", "service_name": "Svc"}}))
+        cases.append(Case(
+            "xray/trojan/reality", "xray",
+            {"protocol": "trojan", "settings": {"clients": [{"password": PASSWORD}]}, "streamSettings": dict(xreality)},
+            {"type": "trojan", "password": PASSWORD, "tls": reality_client()}))
+        cases.append(Case(
+            "sing-box/vless/reality", "sing-box",
+            {"type": "vless", "users": [{"uuid": UUID}], "tls": sreality},
+            {"type": "vless", "uuid": UUID, "tls": reality_client()}))
+        cases.append(Case(
+            "sing-box/vless/vision+reality", "sing-box",
+            {"type": "vless", "users": [{"uuid": UUID, "flow": "xtls-rprx-vision"}], "tls": sreality},
+            {"type": "vless", "uuid": UUID, "flow": "xtls-rprx-vision", "tls": reality_client("firefox")}))
+        vless_reality_in = {"protocol": "vless", "settings": {"clients": [{"id": UUID}], "decryption": "none"},
+                            "streamSettings": dict(xreality)}
+        other_public = reality_keys()[1]
+        cases.append(Case("reality/wrong-public-key-is-rejected", "xray", vless_reality_in,
+                          {"type": "vless", "uuid": UUID, "tls": reality_client(key=other_public)}, expect_fail=True))
+        cases.append(Case("reality/wrong-short-id-is-rejected", "xray", vless_reality_in,
+                          {"type": "vless", "uuid": UUID, "tls": reality_client(sid="ffff")}, expect_fail=True))
+
     # ---- TLS verification ----------------------------------------------
     trojan_in = {"protocol": "trojan", "settings": {"clients": [{"password": PASSWORD}]}, "streamSettings": dict(xtls)}
     cases.append(Case("tls/insecure-accepts-self-signed", "xray", trojan_in,
@@ -363,7 +504,18 @@ def curl(proxy_port, url, extra=(), timeout=30):
     return subprocess.run(cmd, capture_output=True)
 
 
-def check_tcp(proxy_port, origin_port, banner_port):
+def check_tcp(proxy_port, origin_port, banner_port, https_port):
+    # Inner TLS 1.3: what browsers send, and what XTLS Vision looks for.
+    r = curl(proxy_port, f"https://127.0.0.1:{https_port}/small", ["-k", "--tlsv1.3"], timeout=10)
+    if r.stdout != b"hello from origin":
+        return f"HTTPS GET: {r.stderr.decode().strip() or r.stdout[:80]!r}"
+    r = curl(proxy_port, f"https://127.0.0.1:{https_port}/big", ["-k", "--tlsv1.3"])
+    if hashlib.sha256(r.stdout).hexdigest() != BIG_SHA:
+        return f"8 MiB HTTPS download: got {len(r.stdout)} bytes, {r.stderr.decode().strip()}"
+    r = curl(proxy_port, f"https://127.0.0.1:{https_port}/echo",
+             ["-k", "--tlsv1.3", "-X", "POST", "-H", "Expect:", "--data-binary", "@" + os.path.join(WORK, "upload.bin")])
+    if r.stdout.decode() != UPLOAD_SHA:
+        return f"2 MiB HTTPS upload: {r.stderr.decode().strip() or r.stdout[:80]!r}"
     r = curl(proxy_port, f"http://127.0.0.1:{origin_port}/small", timeout=10)
     if r.stdout != b"hello from origin":
         return f"small GET: {r.stderr.decode().strip() or r.stdout[:80]!r}"
@@ -452,7 +604,7 @@ def server_command(case, port, path):
 
 
 def run_case(case, index, services, keep_logs):
-    origin_port, banner_port, echo_ports = services
+    origin_port, banner_port, echo_ports, https_port = services
     server_port, proxy_port = free_ports(2)
     slug = case.name.replace("/", "_").replace("+", "-")
     server_cfg = os.path.join(WORK, f"{slug}.server.json")
@@ -479,7 +631,7 @@ def run_case(case, index, services, keep_logs):
         elif not wait_port(proxy_port, client):
             error = "sybau did not start"
         else:
-            error = check_tcp(proxy_port, origin_port, banner_port)
+            error = check_tcp(proxy_port, origin_port, banner_port, https_port)
             if error is None and case.udp and not case.expect_fail:
                 error = check_udp(proxy_port, echo_ports)
     finally:
@@ -515,14 +667,18 @@ def main():
     shutil.rmtree(WORK, ignore_errors=True)
     os.makedirs(WORK)
     cert, key, pin = make_cert()
-    cases = [c for c in build_cases(cert, key, pin) if args.filter in c.name]
-    if args.list:
-        print("\n".join(c.name for c in cases))
-        return 0
     for binary in (XRAY, SINGBOX, SYBAU):
         if not os.path.exists(binary):
             print(f"missing {binary} (run tests/interop/build-refs.sh and `cargo build -p sybau`)", file=sys.stderr)
             return 2
+    https_port, site_port = free_ports(2)
+    private, public = reality_keys()
+    cases = [c for c in build_cases(cert, key, pin, (private, public, site_port)) if args.filter in c.name]
+    if args.list:
+        print("\n".join(c.name for c in cases))
+        return 0
+    start_tls_site(https_port, cert, key)
+    start_tls_site(site_port, cert, key)
     with open(os.path.join(WORK, "upload.bin"), "wb") as f:
         f.write(UPLOAD)
 
@@ -531,7 +687,7 @@ def main():
     threading.Thread(target=ThreadedTCP(("127.0.0.1", banner_port), Banner).serve_forever, daemon=True).start()
     udp_echo(echo1)
     udp_echo(echo2)
-    services = (origin_port, banner_port, (echo1, echo2))
+    services = (origin_port, banner_port, (echo1, echo2), https_port)
 
     results = []
     for i, case in enumerate(cases):
