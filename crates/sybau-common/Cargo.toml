@@ -1,0 +1,17 @@
+[package]
+name = "sybau-common"
+description = "SYBAU-CORE: shared types, stream traits and system dialer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+bytes.workspace = true
+parking_lot.workspace = true
+socket2.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
