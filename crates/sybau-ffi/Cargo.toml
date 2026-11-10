@@ -1,0 +1,18 @@
+[package]
+name = "sybau-ffi"
+description = "SYBAU-CORE as a library with a C API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "sybaucore"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+sybau-common.workspace = true
+sybau-config.workspace = true
+sybau-core.workspace = true
+parking_lot.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
