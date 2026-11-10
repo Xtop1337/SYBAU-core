@@ -1,0 +1,15 @@
+[package]
+name = "sybau-route"
+description = "SYBAU-CORE: routing rules, domain and IP sets, traffic sniffing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sybau-common.workspace = true
+sybau-proto.workspace = true
+aes = "0.8"
+aho-corasick = "1"
+anyhow.workspace = true
+sybau-tls.workspace = true
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-case"] }
