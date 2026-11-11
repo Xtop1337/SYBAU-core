@@ -47,20 +47,37 @@ pub fn proxy_server(cfg: &Config, sp: &SystemProxyConfig) -> Option<String> {
     })
 }
 
+/// Contents of the state file: the settings to restore and the core
+/// that changed them.
+#[derive(Debug, Serialize, Deserialize)]
+struct State {
+    pid: u32,
+    saved: Saved,
+}
+
 fn write_state(path: &Path, saved: &Saved) -> Result<()> {
-    std::fs::write(path, serde_json::to_vec(saved)?)?;
+    let state = State {
+        pid: std::process::id(),
+        saved: saved.clone(),
+    };
+    std::fs::write(path, serde_json::to_vec(&state)?)?;
     Ok(())
 }
 
-fn read_state(path: &Path) -> Option<Saved> {
+fn read_state(path: &Path) -> Option<State> {
     serde_json::from_slice(&std::fs::read(path).ok()?).ok()
 }
 
-/// Restores settings left behind by a run that did not clean up.
-pub fn recover(profile: &str) {
+/// Restores settings left behind by a run that did not clean up. With
+/// `owner`, only if that core wrote them: a guard must not undo the
+/// settings of a core started after its own one exited.
+pub fn recover_from(profile: &str, owner: Option<u32>) {
     let path = state_file(profile);
-    if let Some(saved) = read_state(&path) {
-        match imp::apply(&saved) {
+    if let Some(state) = read_state(&path) {
+        if owner.is_some_and(|pid| pid != state.pid) {
+            return;
+        }
+        match imp::apply(&state.saved) {
             Ok(()) => {
                 eprintln!("restored the system proxy settings left by a previous run");
                 let _ = std::fs::remove_file(&path);
@@ -68,6 +85,12 @@ pub fn recover(profile: &str) {
             Err(e) => eprintln!("warning: cannot restore the system proxy: {e:#}"),
         }
     }
+}
+
+/// Restores settings left by any earlier run (called at start, when no
+/// other core of the profile can be running).
+pub fn recover(profile: &str) {
+    recover_from(profile, None);
 }
 
 /// Active system proxy; restores the previous settings when dropped.
@@ -120,7 +143,7 @@ pub fn guard(pid: u32, profile: &str) -> Result<()> {
     imp::wait_for_exit(pid)?;
     // A clean exit removed the state file; give it a moment to do so.
     std::thread::sleep(std::time::Duration::from_millis(500));
-    recover(profile);
+    recover_from(profile, Some(pid));
     Ok(())
 }
 
@@ -412,7 +435,10 @@ mod tests {
             auto_config_url: Some("http://pac".into()),
         };
         write_state(&path, &saved).unwrap();
-        assert_eq!(read_state(&path), Some(saved));
+        let state = read_state(&path).unwrap();
+        // The owner lets a guard tell its own core's state from a newer one.
+        assert_eq!(state.pid, std::process::id());
+        assert_eq!(state.saved, saved);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

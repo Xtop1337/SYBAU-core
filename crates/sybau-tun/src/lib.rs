@@ -5,6 +5,8 @@
 pub mod device;
 pub mod routes;
 #[cfg(windows)]
+mod wfp;
+#[cfg(windows)]
 pub mod windows;
 
 pub use device::{Tun, TunOptions};

@@ -101,15 +101,23 @@ EOF
 }
 
 start_core() {
+    # The log is appended to: wait for a line written by this run.
+    local before
+    before=$(wc -l < "$work/sybau.log" 2>/dev/null || echo 0)
     # Not through `in_ns`: `$!` must be the core itself, not a subshell.
     ip netns exec "$ns" "$sybau" run -c "$work/sybau.json" >>"$work/sybau.log" 2>&1 &
     core=$!
     pids+=($core)
-    for _ in $(seq 50); do
-        in_ns ip link show sybtun0 >/dev/null 2>&1 && grep -q "started" "$work/sybau.log" && return
+    for _ in $(seq 100); do
+        if tail -n +"$((before + 1))" "$work/sybau.log" | grep -q 'TUN `sybtun0` up'; then
+            return
+        fi
+        if ! kill -0 "$core" 2>/dev/null; then
+            echo "core exited:"; tail -n +"$((before + 1))" "$work/sybau.log"; exit 1
+        fi
         sleep 0.1
     done
-    echo "core did not start:"; tail -20 "$work/sybau.log"; exit 1
+    echo "core did not start:"; tail -n +"$((before + 1))" "$work/sybau.log"; exit 1
 }
 
 write_config true

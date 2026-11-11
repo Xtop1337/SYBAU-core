@@ -41,6 +41,9 @@ pub struct Routes {
     opts: RouteOptions,
     #[cfg(windows)]
     added: Vec<crate::windows::Route>,
+    /// DNS block of `strict_route` without a kill switch (Windows).
+    #[cfg(windows)]
+    filters: Option<crate::wfp::Session>,
     active: bool,
 }
 
@@ -56,10 +59,11 @@ impl Routes {
         }
         #[cfg(windows)]
         {
-            let added = win::install(opts)?;
+            let (added, filters) = win::install(opts)?;
             Ok(Self {
                 opts: opts.clone(),
                 added,
+                filters,
                 active: true,
             })
         }
@@ -88,6 +92,10 @@ impl Routes {
             for route in self.added.drain(..) {
                 crate::windows::delete_route(&route);
             }
+            self.filters = None;
+            if kill_switch && self.opts.kill_switch {
+                crate::wfp::remove();
+            }
         }
         let _ = kill_switch;
     }
@@ -108,7 +116,28 @@ impl Drop for Routes {
 pub fn cleanup(table: u32) {
     #[cfg(target_os = "linux")]
     linux::cleanup(table, true);
+    #[cfg(windows)]
+    crate::wfp::remove();
     let _ = table;
+}
+
+/// Destinations a kill switch lets through outside the TUN when routing
+/// is not strict: the LAN, link-local and multicast.
+pub fn local_networks() -> Vec<(std::net::IpAddr, u8)> {
+    [
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "169.254.0.0/16",
+        "224.0.0.0/4",
+        "255.255.255.255/32",
+        "fe80::/10",
+        "fc00::/7",
+        "ff00::/8",
+    ]
+    .iter()
+    .map(|c| parse_cidr(c).expect("valid built-in network"))
+    .collect()
 }
 
 /// Splits `a.b.c.d/n` into the address and prefix length.
@@ -140,7 +169,7 @@ mod win {
     use super::{parse_cidr, RouteOptions};
     use crate::windows::{add_route, default_route, Route};
 
-    pub fn install(o: &RouteOptions) -> Result<Vec<Route>> {
+    pub fn install(o: &RouteOptions) -> Result<(Vec<Route>, Option<crate::wfp::Session>)> {
         if !o.include_uid.is_empty() || !o.exclude_uid.is_empty() {
             warn!(target: "sybau::tun", "include_uid / exclude_uid only work on Linux; use include_process / exclude_process");
         }
@@ -180,18 +209,35 @@ mod win {
             }
             Ok(())
         })();
-        if let Err(e) = result {
-            for r in &added {
-                crate::windows::delete_route(r);
+        let filters = result.and_then(|()| {
+            let mut allow = if o.strict_route {
+                Vec::new()
+            } else {
+                super::local_networks()
+            };
+            for cidr in &o.route_exclude_address {
+                allow.push(parse_cidr(cidr)?);
             }
-            return Err(e);
-        }
+            crate::wfp::install(&crate::wfp::FilterOptions {
+                kill_switch: o.kill_switch,
+                block_dns: o.strict_route,
+                tun_index: o.interface_index,
+                allow: &allow,
+            })
+            .context("filters (kill switch / strict_route)")
+        });
+        let filters = match filters {
+            Ok(f) => f,
+            Err(e) => {
+                for r in &added {
+                    crate::windows::delete_route(r);
+                }
+                return Err(e);
+            }
+        };
         let uplink: Option<IpAddr> = default_route(false, o.interface_index).map(|r| r.next_hop);
-        info!(target: "sybau::tun", "routes through `{}` installed ({}; uplink gateway {})", o.interface, wanted.join(", "), uplink.map_or("none".into(), |g| g.to_string()));
-        if o.kill_switch {
-            warn!(target: "sybau::tun", "kill_switch is not available on Windows yet");
-        }
-        Ok(added)
+        info!(target: "sybau::tun", "routes through `{}` installed ({}; uplink gateway {}{}{})", o.interface, wanted.join(", "), uplink.map_or("none".into(), |g| g.to_string()), if o.strict_route { ", DNS outside the TUN blocked" } else { "" }, if o.kill_switch { ", kill switch on" } else { "" });
+        Ok((added, filters))
     }
 }
 

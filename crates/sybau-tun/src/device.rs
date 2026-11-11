@@ -53,6 +53,12 @@ impl Tun {
             }
             #[cfg(not(unix))]
             Some(_) => anyhow::bail!("a TUN file descriptor can only be used on Unix"),
+            // Only VpnService can create the interface on Android.
+            #[cfg(target_os = "android")]
+            None => anyhow::bail!(
+                "on Android the TUN comes from VpnService: pass its descriptor in `file_descriptor`"
+            ),
+            #[cfg(not(target_os = "android"))]
             None => {
                 let mut builder = tun_rs::DeviceBuilder::new()
                     .name(opts.name.clone())
@@ -74,6 +80,10 @@ impl Tun {
                 builder.build_async().with_context(|| format!("cannot create the TUN interface `{}` (root or administrator rights are needed)", opts.name))?
             }
         };
+        // Android descriptors come without a name lookup.
+        #[cfg(target_os = "android")]
+        let name = opts.name.clone();
+        #[cfg(not(target_os = "android"))]
         let name = device.name().unwrap_or_else(|_| opts.name.clone());
         #[cfg(windows)]
         {

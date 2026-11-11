@@ -64,6 +64,8 @@ jobs:
 
   test-windows:
     runs-on: windows-latest
+    # The TUN test blocks the network for a few seconds (kill switch).
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -76,7 +78,7 @@ jobs:
       - name: Windows smoke test (metadata, single instance, named pipe, proxying)
         shell: pwsh
         run: tests/windows/smoke.ps1 -Exe target\release\sybau.exe
-      - name: Windows TUN test (Wintun, routes, uplink pinning, DNS hijack, process rules)
+      - name: Windows TUN test (Wintun, routes, uplink pinning, DNS hijack, process rules, WFP kill switch)
         shell: pwsh
         run: tests/windows/tun.ps1 -Exe target\release\sybau.exe
 
