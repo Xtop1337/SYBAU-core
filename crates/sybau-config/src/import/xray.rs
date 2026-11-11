@@ -877,12 +877,15 @@ fn dns_server(
         (true, "local".to_string())
     } else if address == "fakedns" {
         (true, "fakeip".to_string())
-    } else if address.starts_with("quic") || address.starts_with("h2c") {
+    } else if let Some(rest) = address.strip_prefix("quic+local://") {
+        (true, format!("quic://{rest}"))
+    } else if address.starts_with("h2c") {
         notes.add(format!(
             "DNS server `{address}` is not supported yet; dropped"
         ));
         return None;
     } else if address.starts_with("https://")
+        || address.starts_with("quic://")
         || address.starts_with("tcp://")
         || address.starts_with("udp://")
     {

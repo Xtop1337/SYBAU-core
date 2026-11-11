@@ -44,7 +44,7 @@
 | Группы: `selector` (переключение через API, выбор переживает перезагрузку конфига) и `balancer` (`round_robin`, `random`, `fallback`, `least_ping`) с автоматическим обходом упавшего сервера | готово, проверено |
 | Активная проверка задержки по URL (urltest) | не начато: `least_ping` и обход сбоев опираются на реальные соединения |
 | DNS: UDP (с переходом на TCP), TCP, DoT, DoH, `local`, `rcode://`; сервер через любой outbound (`detour`); правила выбора сервера; кеш; hosts; fake-IP; ECS; стратегии `prefer_ipv4`/`ipv4_only` и др. | готово, проверено |
-| DoQ, DoH3 | не начато (этап 6, вместе с QUIC) |
+| DoQ (`quic://`, RFC 9250) и DoH3 (`h3://`): одно QUIC-соединение на сервер, запрос на отдельном потоке; напрямую или через любой outbound с UDP (`detour`) | готово, проверено против AdGuard dnsproxy (в том числе через SOCKS5) |
 | Чтение конфигов Xray (JSON) и sing-box (JSON) напрямую: `run`, `check`, C API и `core.reload` определяют формат сами | готово, проверено настоящими Xray и sing-box (см. ниже) |
 | `sybau convert --from xray\|sing-box\|auto` | готово, проверено |
 | Ссылки `vless://`, `vmess://`, `trojan://`, `ss://`, `hy2://`/`hysteria2://`, `tuic://`, `wireguard://` | готово, проверено (для Hysteria2/TUIC/WireGuard пока только разбор: сами протоколы — этапы 6 и 8) |
@@ -217,6 +217,7 @@ DNS (формат sing-box). `direct` и `domain_strategy` резолвят че
     { "tag": "remote", "address": "https://1.1.1.1/dns-query", "detour": "proxy" },
     { "tag": "local", "address": "udp://77.88.8.8" },
     { "tag": "google", "address": "tls://dns.google", "address_resolver": "local" },
+    { "tag": "adguard", "address": "quic://94.140.14.140", "tls": { "server_name": "dns.adguard-dns.com" } },
     { "tag": "fake", "address": "fakeip" }
   ],
   "rules": [
@@ -378,7 +379,9 @@ uTLS той же ревизии, что в Xray:
 cd tools/utls-dump && go run . > ../../crates/sybau-tls/src/fingerprints.json
 ```
 
-Стенд совместимости (нужны Go, curl, openssl и python3):
+Эталонные серверы — Xray, sing-box и AdGuard dnsproxy (для DoQ/DoH3; без
+него тест DoQ/DoH3 пропускается) — собирает (нужны Go, curl, openssl и
+python3):
 
 ```bash
 tests/interop/build-refs.sh

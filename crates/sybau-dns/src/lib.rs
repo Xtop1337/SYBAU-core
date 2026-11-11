@@ -4,6 +4,7 @@
 pub mod cache;
 pub mod fakeip;
 pub mod message;
+pub mod quic;
 pub mod upstream;
 
 pub use message::{Message, Question, Record, RecordData};

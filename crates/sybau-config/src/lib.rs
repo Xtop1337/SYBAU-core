@@ -343,6 +343,31 @@ mod tests {
     }
 
     #[test]
+    fn quic_dns_servers_are_imported() {
+        let sb = parse_any(
+            r#"{"outbounds": [{"type": "direct", "tag": "direct"}],
+                "dns": {"servers": [
+                  {"type": "quic", "tag": "q", "server": "dns.adguard-dns.com"},
+                  {"type": "h3", "tag": "h", "server": "1.1.1.1", "server_port": 8443, "path": "/q"}]}}"#,
+        )
+        .unwrap()
+        .config;
+        let servers = &sb.dns.unwrap().servers;
+        assert_eq!(servers[0].address, "quic://dns.adguard-dns.com:853");
+        assert_eq!(servers[1].address, "h3://1.1.1.1:8443/q");
+        let xray = parse_any(
+            r#"{"outbounds": [{"protocol": "freedom"}],
+                "dns": {"servers": ["quic+local://dns.adguard-dns.com"]}}"#,
+        )
+        .unwrap()
+        .config;
+        assert_eq!(
+            xray.dns.unwrap().servers[0].address,
+            "quic://dns.adguard-dns.com"
+        );
+    }
+
+    #[test]
     fn xray_dns_outbound_is_imported() {
         let imported = parse_any(
             r#"{

@@ -600,10 +600,7 @@ fn dns_server(mut s: Value, notes: &mut Notes) -> Option<Value> {
     let tag = s["tag"].as_str().unwrap_or("").to_string();
     let mut out = json!({"tag": tag});
     if let Some(address) = take_str(&mut s, "address") {
-        if address.starts_with("dhcp://")
-            || address.starts_with("quic://")
-            || address.starts_with("h3://")
-        {
+        if address.starts_with("dhcp://") {
             notes.add(format!(
                 "DNS server `{tag}`: `{address}` is not supported yet; server dropped"
             ));
@@ -626,6 +623,12 @@ fn dns_server(mut s: Value, notes: &mut Notes) -> Option<Value> {
             "tls" => format!("tls://{}", with_port(853)),
             "https" => format!(
                 "https://{}{}",
+                with_port(443),
+                take_str(&mut s, "path").unwrap_or_else(|| "/dns-query".into())
+            ),
+            "quic" => format!("quic://{}", with_port(853)),
+            "h3" => format!(
+                "h3://{}{}",
                 with_port(443),
                 take_str(&mut s, "path").unwrap_or_else(|| "/dns-query".into())
             ),

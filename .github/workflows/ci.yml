@@ -31,7 +31,13 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: AdGuard dnsproxy (reference DoQ / DoH3 server)
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" GOTOOLCHAIN=auto go install github.com/AdguardTeam/dnsproxy@v0.75.5
+          echo "DNSPROXY_BIN=$RUNNER_TEMP/bin/dnsproxy" >> "$GITHUB_ENV"
       - run: cargo test --workspace
+        env:
+          SYBAU_REQUIRE_REFS: "1"
       - name: C API smoke test
         run: tests/ffi/run.sh
 

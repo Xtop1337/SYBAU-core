@@ -440,7 +440,7 @@ async fn invalid_dns_configs_are_rejected() {
     let engine = sybau_core::Engine::new(Default::default());
     for bad in [
         json!({"dns": {"servers": []}}),
-        json!({"dns": {"servers": [{"tag": "a", "address": "quic://x"}]}}),
+        json!({"dns": {"servers": [{"tag": "a", "address": "dhcp://auto"}]}}),
         json!({"dns": {"servers": [{"tag": "a", "address": "1.1.1.1"}], "final": "b"}}),
         json!({"dns": {"servers": [{"tag": "a", "address": "1.1.1.1"}], "rules": [{"domain": "x", "server": "zz"}]}}),
         json!({"dns": {"servers": [{"tag": "a", "address": "1.1.1.1"}], "strategy": "ipv5"}}),
@@ -554,4 +554,145 @@ async fn dns_outbound_works_without_a_dns_section() {
     s.read_exact(&mut reply).await.unwrap();
     assert_eq!(last_a(&reply), [127, 0, 0, 1]);
     core.engine.stop().await;
+}
+
+/// AdGuard dnsproxy, the reference DoQ / DoH3 server: `DNSPROXY_BIN`, or
+/// the one tests/interop/build-refs.sh builds. Without it the test skips.
+fn dnsproxy() -> Option<std::path::PathBuf> {
+    let path = std::env::var_os("DNSPROXY_BIN")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/interop/.bin/dnsproxy")
+        });
+    path.exists().then_some(path)
+}
+
+struct Child(std::process::Child);
+impl Drop for Child {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+#[tokio::test]
+async fn doq_and_doh3_against_adguard_dnsproxy() {
+    let Some(bin) = dnsproxy() else {
+        assert!(
+            std::env::var_os("SYBAU_REQUIRE_REFS").is_none(),
+            "SYBAU_REQUIRE_REFS is set but dnsproxy is missing"
+        );
+        eprintln!("skipped: no dnsproxy (set DNSPROXY_BIN or run tests/interop/build-refs.sh)");
+        return;
+    };
+    let z = zone(&[("quic.test", [10, 7, 7, 7]), ("h3.test", [10, 3, 3, 3])]);
+    let upstream = serve_udp(z.clone()).await;
+    let generated = rcgen::generate_simple_self_signed(vec!["dns.test".to_string()]).unwrap();
+    let pin: String = Sha256::digest(generated.cert.der().as_ref())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let dir = std::env::temp_dir().join(format!("sybau-dnsproxy-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (crt, key) = (dir.join("cert.pem"), dir.join("key.pem"));
+    std::fs::write(&crt, generated.cert.pem()).unwrap();
+    std::fs::write(&key, generated.key_pair.serialize_pem()).unwrap();
+    let (quic_port, h3_port) = (free_port(), free_port());
+    let _server = Child(
+        std::process::Command::new(&bin)
+            .args(["-l", "127.0.0.1", "-p", "0", "--http3"])
+            .arg(format!("--quic-port={quic_port}"))
+            .arg(format!("--https-port={h3_port}"))
+            .arg(format!("--tls-crt={}", crt.display()))
+            .arg(format!("--tls-key={}", key.display()))
+            .arg(format!("--upstream=udp://{upstream}"))
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let tls = json!({"server_name": "dns.test", "pinned_cert_sha256": [pin]});
+    let core = start_config(json!({
+        "dns": {
+            "servers": [
+                {"tag": "doq", "address": format!("quic://127.0.0.1:{quic_port}"), "tls": tls},
+                {"tag": "doh3", "address": format!("h3://127.0.0.1:{h3_port}/dns-query"), "tls": tls},
+                {"tag": "bad", "address": format!("quic://127.0.0.1:{quic_port}"), "tls": {"server_name": "dns.test"}},
+            ],
+            "rules": [{"domain_suffix": ["h3.test"], "server": "doh3"}, {"domain_keyword": "fail", "server": "bad"}],
+            "cache": {"enabled": false},
+        },
+    }))
+    .await;
+    // dnsproxy needs a moment to listen.
+    let mut answer = Vec::new();
+    for _ in 0..50 {
+        answer = addresses(&query(&core, "quic.test", "A").await);
+        if !answer.is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(answer, ["10.7.7.7"], "DoQ");
+    // Queries share the QUIC connection; each runs on its own stream.
+    let replies = futures_join(&core, &["quic.test", "quic.test", "quic.test"]).await;
+    assert!(
+        replies.iter().all(|r| r == &["10.7.7.7"]),
+        "parallel DoQ: {replies:?}"
+    );
+    assert_eq!(
+        addresses(&query(&core, "h3.test", "A").await),
+        ["10.3.3.3"],
+        "DoH3"
+    );
+    assert_eq!(
+        addresses(&query(&core, "h3.test", "A").await),
+        ["10.3.3.3"],
+        "DoH3 reused"
+    );
+    assert!(z.count("quic.test") >= 4 && z.count("h3.test") >= 2);
+    // A self-signed certificate without the pin is refused.
+    assert_eq!(query(&core, "fail.test", "A").await["rcode"], 2);
+    // Through a proxy: QUIC runs over the SOCKS5 UDP relay of the first core.
+    let proxied = start_config(json!({
+        "outbounds": [{"type": "socks", "tag": "via", "server": "127.0.0.1", "port": core.port}],
+        "dns": {
+            "servers": [{"tag": "doq", "address": format!("quic://127.0.0.1:{quic_port}"), "tls": tls, "detour": "via"}],
+            "cache": {"enabled": false},
+        },
+    }))
+    .await;
+    assert_eq!(
+        addresses(&query(&proxied, "quic.test", "A").await),
+        ["10.7.7.7"],
+        "DoQ via SOCKS5"
+    );
+    let conns = core.engine.call("stats.get", &Value::Null).await.unwrap();
+    assert!(
+        conns["down"].as_u64().unwrap() > 0,
+        "the first core relayed the QUIC packets"
+    );
+    proxied.engine.stop().await;
+    core.engine.stop().await;
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+async fn futures_join(core: &Core, names: &[&str]) -> Vec<Vec<String>> {
+    let mut tasks = Vec::new();
+    for name in names {
+        let (engine, name) = (core.engine.clone(), name.to_string());
+        tasks.push(tokio::spawn(async move {
+            let reply = engine
+                .call("dns.query", &json!({"name": name, "type": "A"}))
+                .await
+                .unwrap();
+            addresses(&reply)
+        }));
+    }
+    let mut out = Vec::new();
+    for t in tasks {
+        out.push(t.await.unwrap());
+    }
+    out
 }

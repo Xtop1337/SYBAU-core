@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
+use bytes::Bytes;
 use sybau_common::{io_err, proto_err, BoxStream, Network, Outbound, Session, Target};
 use sybau_config::TlsConfig;
 use sybau_transport::h2::{Framing, H2Pool};
@@ -16,6 +17,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::message::{
     Message, Record, RecordData, CLASS_IN, RCODE_NOTIMP, RCODE_SERVFAIL, TYPE_A, TYPE_AAAA,
 };
+use crate::quic::{quic_err, QuicConnector};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 const UDP_ATTEMPTS: usize = 2;
@@ -35,6 +37,13 @@ pub enum Address {
     Tcp(Target),
     Tls(Target),
     Https {
+        target: Target,
+        path: String,
+    },
+    /// DNS over QUIC (RFC 9250).
+    Quic(Target),
+    /// DNS over HTTPS on HTTP/3.
+    H3 {
         target: Target,
         path: String,
     },
@@ -70,6 +79,15 @@ fn host_port(text: &str, default_port: u16) -> Result<Target> {
     }
 }
 
+/// `host[:port][/path]` of an https:// or h3:// server.
+fn url_parts(r: &str) -> Result<(Target, String)> {
+    let (authority, path) = match r.find('/') {
+        Some(i) => (&r[..i], r[i..].to_string()),
+        None => (r, "/dns-query".to_string()),
+    };
+    Ok((host_port(authority, 443)?, path))
+}
+
 impl Address {
     pub fn parse(text: &str) -> Result<Self> {
         let t = text.trim();
@@ -80,14 +98,13 @@ impl Address {
         } else if let Some(r) = t.strip_prefix("tls://") {
             Address::Tls(host_port(r, 853)?)
         } else if let Some(r) = t.strip_prefix("https://") {
-            let (authority, path) = match r.find('/') {
-                Some(i) => (&r[..i], r[i..].to_string()),
-                None => (r, "/dns-query".to_string()),
-            };
-            Address::Https {
-                target: host_port(authority, 443)?,
-                path,
-            }
+            let (target, path) = url_parts(r)?;
+            Address::Https { target, path }
+        } else if let Some(r) = t.strip_prefix("quic://") {
+            Address::Quic(host_port(r, 853)?)
+        } else if let Some(r) = t.strip_prefix("h3://") {
+            let (target, path) = url_parts(r)?;
+            Address::H3 { target, path }
         } else if let Some(r) = t.strip_prefix("rcode://") {
             Address::Rcode(match r {
                 "success" | "noerror" => 0,
@@ -103,7 +120,7 @@ impl Address {
         } else if t == "fakeip" {
             Address::FakeIp
         } else if t.contains("://") {
-            bail!("unsupported DNS server `{t}` (udp://, tcp://, tls://, https://, local, fakeip, rcode://)");
+            bail!("unsupported DNS server `{t}` (udp://, tcp://, tls://, https://, quic://, h3://, local, fakeip, rcode://)");
         } else {
             Address::Udp(host_port(t, 53)?)
         })
@@ -328,6 +345,205 @@ impl Upstream for Https {
                 format!("{} did not answer", self.name),
             )
         })?
+    }
+}
+
+fn timed_out(name: &str) -> io::Error {
+    io_err(io::ErrorKind::TimedOut, format!("{name} did not answer"))
+}
+
+/// DNS over QUIC (RFC 9250): one stream per query on a shared
+/// connection, message ID 0, length-prefixed like DNS over TCP.
+pub struct Quic {
+    name: String,
+    connector: QuicConnector,
+}
+
+impl Quic {
+    pub fn new(
+        server: Target,
+        outbound: Arc<dyn Outbound>,
+        tls: Option<&TlsConfig>,
+    ) -> Result<Self> {
+        Ok(Self {
+            name: format!("quic://{server}"),
+            connector: QuicConnector::new(server, outbound, tls, "doq")?,
+        })
+    }
+
+    async fn ask(&self, conn: &quinn::Connection, wire: &[u8]) -> io::Result<Vec<u8>> {
+        let (mut send, mut recv) = conn.open_bi().await.map_err(quic_err)?;
+        let mut framed = Vec::with_capacity(wire.len() + 2);
+        framed.extend_from_slice(&(wire.len() as u16).to_be_bytes());
+        framed.extend_from_slice(wire);
+        send.write_all(&framed).await.map_err(quic_err)?;
+        // The query is complete: the server answers after FIN.
+        send.finish().map_err(quic_err)?;
+        let mut len = [0u8; 2];
+        recv.read_exact(&mut len).await.map_err(quic_err)?;
+        let mut buf = vec![0u8; usize::from(u16::from_be_bytes(len))];
+        recv.read_exact(&mut buf).await.map_err(quic_err)?;
+        Ok(buf)
+    }
+}
+
+#[async_trait]
+impl Upstream for Quic {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn exchange(&self, query: &Message) -> io::Result<Message> {
+        let mut q = query.clone();
+        q.id = 0;
+        let wire = encode(&q)?;
+        let run = async {
+            // A connection the server closed while idle fails the first
+            // stream; one retry on a fresh connection covers that.
+            let mut last = None;
+            for fresh in [false, true] {
+                let conn = self.connector.connection(fresh).await?;
+                match self.ask(&conn, &wire).await {
+                    Ok(body) => {
+                        let mut reply = decode(&body)?;
+                        reply.id = query.id;
+                        check_reply(query, &reply)?;
+                        return Ok(reply);
+                    }
+                    Err(e) => last = Some(e),
+                }
+            }
+            Err(last.expect("two attempts"))
+        };
+        tokio::time::timeout(TIMEOUT, run)
+            .await
+            .map_err(|_| timed_out(&self.name))?
+    }
+}
+
+type H3Requests = h3::client::SendRequest<h3_quinn::OpenStreams, Bytes>;
+
+/// DNS over HTTPS (RFC 8484) on HTTP/3.
+pub struct H3 {
+    name: String,
+    uri: String,
+    connector: QuicConnector,
+    session: tokio::sync::Mutex<Option<(quinn::Connection, H3Requests)>>,
+}
+
+impl H3 {
+    pub fn new(
+        server: Target,
+        path: String,
+        outbound: Arc<dyn Outbound>,
+        tls: Option<&TlsConfig>,
+    ) -> Result<Self> {
+        let connector = QuicConnector::new(server.clone(), outbound, tls, "h3")?;
+        let host = tls
+            .and_then(|t| t.server_name.clone())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| server.host_string());
+        let authority = if server.port == 443 {
+            host
+        } else {
+            format!("{host}:{}", server.port)
+        };
+        Ok(Self {
+            name: format!("h3://{authority}{path}"),
+            uri: format!("https://{authority}{path}"),
+            connector,
+            session: tokio::sync::Mutex::new(None),
+        })
+    }
+
+    /// HTTP/3 request sender on the current connection.
+    async fn requests(&self, fresh: bool) -> io::Result<H3Requests> {
+        let mut session = self.session.lock().await;
+        if let Some((conn, send)) = session.as_ref() {
+            if !fresh && conn.close_reason().is_none() {
+                return Ok(send.clone());
+            }
+        }
+        let conn = self.connector.connection(fresh).await?;
+        let (mut driver, send) = h3::client::new(h3_quinn::Connection::new(conn.clone()))
+            .await
+            .map_err(quic_err)?;
+        // Serves the connection's control streams until it closes.
+        tokio::spawn(async move {
+            let _ = std::future::poll_fn(|cx| driver.poll_close(cx)).await;
+        });
+        *session = Some((conn, send.clone()));
+        Ok(send)
+    }
+
+    async fn ask(&self, mut send: H3Requests, wire: &[u8]) -> io::Result<Vec<u8>> {
+        let request = http::Request::builder()
+            .method(http::Method::POST)
+            .uri(&self.uri)
+            .header("content-type", "application/dns-message")
+            .header("accept", "application/dns-message")
+            .body(())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let mut stream = send.send_request(request).await.map_err(quic_err)?;
+        stream
+            .send_data(Bytes::copy_from_slice(wire))
+            .await
+            .map_err(quic_err)?;
+        stream.finish().await.map_err(quic_err)?;
+        let response = stream.recv_response().await.map_err(quic_err)?;
+        if response.status() != http::StatusCode::OK {
+            return Err(proto_err(format!(
+                "{}: HTTP {}",
+                self.name,
+                response.status()
+            )));
+        }
+        let mut body = Vec::with_capacity(512);
+        while let Some(mut chunk) = stream.recv_data().await.map_err(quic_err)? {
+            use bytes::Buf;
+            while chunk.has_remaining() {
+                let part = chunk.chunk();
+                if body.len() + part.len() > MAX_MESSAGE {
+                    return Err(proto_err("DNS reply too large"));
+                }
+                body.extend_from_slice(part);
+                let n = part.len();
+                chunk.advance(n);
+            }
+        }
+        Ok(body)
+    }
+}
+
+#[async_trait]
+impl Upstream for H3 {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn exchange(&self, query: &Message) -> io::Result<Message> {
+        let mut q = query.clone();
+        q.id = 0;
+        let wire = encode(&q)?;
+        let run = async {
+            let mut last = None;
+            for fresh in [false, true] {
+                let send = self.requests(fresh).await?;
+                match self.ask(send, &wire).await {
+                    Ok(body) => {
+                        let mut reply = decode(&body)?;
+                        reply.id = query.id;
+                        check_reply(query, &reply)?;
+                        return Ok(reply);
+                    }
+                    Err(e) => last = Some(e),
+                }
+            }
+            Err(last.expect("two attempts"))
+        };
+        tokio::time::timeout(TIMEOUT, run)
+            .await
+            .map_err(|_| timed_out(&self.name))?
     }
 }
 
@@ -566,6 +782,10 @@ pub fn build(
             outbound,
             tls_for(target, &["h2"])?,
         )),
+        Address::Quic(t) => Arc::new(Quic::new(t.clone(), outbound, tls)?),
+        Address::H3 { target, path } => {
+            Arc::new(H3::new(target.clone(), path.clone(), outbound, tls)?)
+        }
         Address::Local => Arc::new(Local),
         Address::Rcode(code) => Arc::new(Rcode(*code)),
         Address::FakeIp => bail!("fakeip is not a network upstream"),
@@ -636,7 +856,18 @@ mod tests {
         );
         assert_eq!(Address::parse("local").unwrap(), Address::Local);
         assert_eq!(Address::parse("fakeip").unwrap(), Address::FakeIp);
-        assert!(Address::parse("quic://x").is_err());
+        assert_eq!(
+            Address::parse("quic://dns.adguard-dns.com").unwrap(),
+            Address::Quic(Target::parse("dns.adguard-dns.com:853").unwrap())
+        );
+        assert_eq!(
+            Address::parse("h3://1.1.1.1:8443/q").unwrap(),
+            Address::H3 {
+                target: Target::parse("1.1.1.1:8443").unwrap(),
+                path: "/q".into()
+            }
+        );
+        assert!(Address::parse("dhcp://auto").is_err());
         assert!(Address::parse("rcode://what").is_err());
     }
 }
