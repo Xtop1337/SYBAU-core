@@ -2104,6 +2104,7 @@ dependencies = [
  "bytes",
  "ipstack",
  "libc",
+ "parking_lot",
  "tokio",
  "tracing",
  "tun-rs",

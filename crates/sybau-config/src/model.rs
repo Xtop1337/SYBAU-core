@@ -143,8 +143,14 @@ fn default_tun_fwmark() -> u32 {
 fn default_tun_table() -> u32 {
     2022
 }
+/// TCP through the OS where the core supports it (faster), otherwise the
+/// userspace stack.
 fn default_tun_stack() -> String {
-    "userspace".into()
+    if cfg!(any(target_os = "linux", target_os = "android")) {
+        "mixed".into()
+    } else {
+        "userspace".into()
+    }
 }
 
 /// TUN inbound. Field names follow sing-box where they exist there.
@@ -194,8 +200,9 @@ pub struct TunInbound {
     /// the core dies and is lifted by a clean exit or `sybau tun-cleanup`.
     #[serde(default)]
     pub kill_switch: bool,
-    /// `userspace` (TCP/IP in the core), `system` (the OS TCP stack) or
-    /// `mixed` (system TCP, userspace UDP).
+    /// `userspace` (TCP/IP in the core), `system` or `mixed` (TCP through
+    /// the OS stack, UDP in the core; the two are the same here). Default:
+    /// `mixed` on Linux and Android, `userspace` elsewhere.
     #[serde(default = "default_tun_stack")]
     pub stack: String,
     /// Open TUN descriptor handed over by the platform (Android).

@@ -126,10 +126,34 @@ impl Tun {
 
     /// Starts the userspace TCP/IP stack on this interface.
     pub fn into_stack(self, udp_timeout: std::time::Duration) -> ipstack::IpStack {
+        ipstack::IpStack::new(
+            Self::stack_config(self.mtu, udp_timeout),
+            PacketIo::new(self.device, None),
+        )
+    }
+
+    fn stack_config(mtu: u16, udp_timeout: std::time::Duration) -> ipstack::IpStackConfig {
         let mut config = ipstack::IpStackConfig::default();
-        config.mtu_unchecked(self.mtu.max(1280));
+        config.mtu_unchecked(mtu.max(1280));
         config.udp_timeout(udp_timeout);
-        ipstack::IpStack::new(config, PacketIo::new(self.device))
+        config
+    }
+
+    /// The `system` stack: TCP through the operating system (see
+    /// [`crate::system`]), everything else through the userspace stack.
+    /// `v4`/`v6` are the interface addresses.
+    pub fn into_system_stack(
+        self,
+        udp_timeout: std::time::Duration,
+        v4: Option<(Ipv4Addr, u8)>,
+        v6: Option<(Ipv6Addr, u8)>,
+    ) -> io::Result<(ipstack::IpStack, crate::system::TcpAcceptor)> {
+        let tcp = crate::system::TcpAcceptor::bind(v4, v6)?;
+        let stack = ipstack::IpStack::new(
+            Self::stack_config(self.mtu, udp_timeout),
+            PacketIo::new(self.device, Some(tcp.nat())),
+        );
+        Ok((stack, tcp))
     }
 }
 
@@ -166,24 +190,56 @@ fn wintun_path(configured: Option<&str>) -> Result<String> {
 struct PacketIo {
     incoming: mpsc::Receiver<io::Result<Bytes>>,
     outgoing: mpsc::UnboundedSender<Bytes>,
-    tasks: [tokio::task::JoinHandle<()>; 2],
+    tasks: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl PacketIo {
-    fn new(device: Arc<AsyncDevice>) -> Self {
+    /// With `nat`, TCP packets are translated and written straight back
+    /// into the interface; the userspace stack sees only the rest.
+    fn new(device: Arc<AsyncDevice>, nat: Option<Arc<crate::system::Nat>>) -> Self {
+        use crate::system::Verdict;
         let (in_tx, incoming) = mpsc::channel(1024);
         let (outgoing, mut out_rx) = mpsc::unbounded_channel::<Bytes>();
+        let mut tasks = Vec::new();
+        if let Some(nat) = &nat {
+            let nat = nat.clone();
+            tasks.push(tokio::spawn(async move {
+                let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
+                loop {
+                    tick.tick().await;
+                    nat.expire();
+                }
+            }));
+        }
         let reader = {
             let device = device.clone();
             tokio::spawn(async move {
                 let mut buf = vec![0u8; 65536];
                 loop {
-                    let r = device
-                        .recv(&mut buf)
+                    let n = match device.recv(&mut buf).await {
+                        Ok(n) => n,
+                        Err(e) => {
+                            let _ = in_tx.send(Err(e)).await;
+                            return;
+                        }
+                    };
+                    if let Some(nat) = &nat {
+                        match nat.rewrite(&mut buf[..n]) {
+                            Verdict::Rewritten => {
+                                if let Err(e) = device.send(&buf[..n]).await {
+                                    tracing::debug!(target: "sybau::tun", "write to TUN: {e}");
+                                }
+                                continue;
+                            }
+                            Verdict::Drop => continue,
+                            Verdict::Pass => {}
+                        }
+                    }
+                    if in_tx
+                        .send(Ok(Bytes::copy_from_slice(&buf[..n])))
                         .await
-                        .map(|n| Bytes::copy_from_slice(&buf[..n]));
-                    let failed = r.is_err();
-                    if in_tx.send(r).await.is_err() || failed {
+                        .is_err()
+                    {
                         return;
                     }
                 }
@@ -196,10 +252,11 @@ impl PacketIo {
                 }
             }
         });
+        tasks.extend([reader, writer]);
         Self {
             incoming,
             outgoing,
-            tasks: [reader, writer],
+            tasks,
         }
     }
 }

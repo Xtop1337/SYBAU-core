@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use sybau_common::net::InterfaceIndex;
-use sybau_common::{io_err, Network, PacketConn, Session, SniffOptions, Target};
+use sybau_common::{io_err, AsyncStream, Network, PacketConn, Session, SniffOptions, Target};
 use sybau_config::TunInbound as TunConfig;
 use sybau_tun::routes::{RouteOptions, Routes};
 use sybau_tun::{IpStackStream, IpStackUdpStream, Tun, TunOptions};
@@ -23,6 +23,9 @@ use crate::dispatch::Dispatcher;
 use crate::dns::DnsResolver;
 
 const DEFAULT_UDP_TIMEOUT: Duration = Duration::from_secs(300);
+/// Platforms where the `system` stack is available (Windows would need
+/// firewall rules for the listener).
+const SYSTEM_STACK: bool = cfg!(any(target_os = "linux", target_os = "android"));
 
 /// An opened TUN interface with its routes, ready to serve.
 pub struct TunInbound {
@@ -65,8 +68,8 @@ impl TunInbound {
         cfg: &TunConfig,
         uplink: Option<Arc<InterfaceIndex>>,
     ) -> Result<Self> {
-        if matches!(cfg.stack.as_str(), "system" | "mixed") {
-            warn!(target: "sybau::inbound", "inbound `{tag}`: stack `{}` is not available yet, using `userspace`", cfg.stack);
+        if matches!(cfg.stack.as_str(), "system" | "mixed") && !SYSTEM_STACK {
+            warn!(target: "sybau::inbound", "inbound `{tag}`: stack `{}` is not available on this platform yet, using `userspace`", cfg.stack);
         }
         let mut opts = TunOptions {
             name: cfg.interface_name.clone(),
@@ -157,7 +160,29 @@ impl TunInbound {
             .as_deref()
             .and_then(|d| sybau_config::route::parse_duration(d).ok())
             .unwrap_or(DEFAULT_UDP_TIMEOUT);
-        let mut stack = tun.into_stack(udp_timeout);
+        let system = SYSTEM_STACK && matches!(cfg.stack.as_str(), "system" | "mixed");
+        let (mut stack, tcp) = if system {
+            let v4 = own_nets.iter().find_map(|(ip, p)| match ip {
+                IpAddr::V4(v4) => Some((*v4, *p)),
+                _ => None,
+            });
+            let v6 = own_nets.iter().find_map(|(ip, p)| match ip {
+                IpAddr::V6(v6) => Some((*v6, *p)),
+                _ => None,
+            });
+            match tun.into_system_stack(udp_timeout, v4, v6) {
+                Ok((stack, tcp)) => (stack, Some(tcp)),
+                Err(e) => {
+                    warn!(target: "sybau::inbound", "inbound `{tag}`: system stack: {e}");
+                    if let Some(routes) = routes {
+                        routes.shutdown(keep_kill_switch.load(Ordering::SeqCst));
+                    }
+                    return;
+                }
+            }
+        } else {
+            (tun.into_stack(udp_timeout), None)
+        };
         let ctx = Arc::new(Ctx {
             sniff: SniffOptions {
                 enabled: cfg.sniff.enabled,
@@ -174,13 +199,24 @@ impl TunInbound {
             own_nets,
             dispatcher,
         });
+        if tcp.is_some() {
+            info!(target: "sybau::inbound", "inbound `{}`: system stack (TCP through the OS)", ctx.tag);
+        }
         loop {
-            let stream = tokio::select! {
+            let next = tokio::select! {
                 r = stack.accept() => match r {
-                    Ok(s) => s,
+                    Ok(s) => Accepted::Stack(s),
                     Err(e) => {
                         warn!(target: "sybau::inbound", "inbound `{}`: TUN stack stopped: {e}", ctx.tag);
                         break;
+                    }
+                },
+                r = accept_system(tcp.as_ref()) => match r {
+                    Ok(a) => Accepted::System(Box::new(a)),
+                    Err(e) => {
+                        warn!(target: "sybau::inbound", "inbound `{}`: system stack accept: {e}", ctx.tag);
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        continue;
                     }
                 },
                 _ = cancel.cancelled() => break,
@@ -188,16 +224,32 @@ impl TunInbound {
             let (ctx, cancel) = (ctx.clone(), cancel.clone());
             tokio::spawn(async move {
                 tokio::select! {
-                    _ = ctx.handle(stream) => {}
+                    _ = ctx.accepted(next) => {}
                     _ = cancel.cancelled() => {}
                 }
             });
         }
         drop(stack);
+        drop(tcp);
         if let Some(routes) = routes {
             routes.shutdown(keep_kill_switch.load(Ordering::SeqCst));
         }
         info!(target: "sybau::inbound", "inbound `{}`: TUN closed", ctx.tag);
+    }
+}
+
+/// A flow from either stack.
+enum Accepted {
+    Stack(IpStackStream),
+    System(Box<sybau_tun::system::Accepted>),
+}
+
+async fn accept_system(
+    tcp: Option<&sybau_tun::system::TcpAcceptor>,
+) -> io::Result<sybau_tun::system::Accepted> {
+    match tcp {
+        Some(t) => t.accept().await,
+        None => std::future::pending().await,
     }
 }
 
@@ -271,20 +323,38 @@ fn process_listed(list: &[String], name: &str, path: &str) -> bool {
 }
 
 impl Ctx {
+    async fn accepted(&self, next: Accepted) {
+        match next {
+            Accepted::Stack(s) => self.handle(s).await,
+            Accepted::System(a) => {
+                let a = *a;
+                // The translation lives as long as the stream.
+                let _held = a.held;
+                self.tcp(a.stream, a.source, a.destination).await;
+            }
+        }
+    }
+
+    async fn tcp<S: AsyncStream>(&self, stream: S, src: SocketAddr, dst: SocketAddr) {
+        if let Some(dns) = self.hijacked(dst) {
+            debug!(target: "sybau::dns", "hijacked DNS over TCP {src} -> {dst}");
+            crate::dns::serve_tcp(&dns, stream).await;
+            return;
+        }
+        if !self.allowed(dst) {
+            return;
+        }
+        let sess = self.session(Network::Tcp, src, dst).await;
+        self.dispatcher
+            .dispatch_stream(sess, Box::new(stream))
+            .await;
+    }
+
     async fn handle(&self, stream: IpStackStream) {
         match stream {
             IpStackStream::Tcp(tcp) => {
                 let (src, dst) = (tcp.local_addr(), tcp.peer_addr());
-                if let Some(dns) = self.hijacked(dst) {
-                    debug!(target: "sybau::dns", "hijacked DNS over TCP {src} -> {dst}");
-                    crate::dns::serve_tcp(&dns, tcp).await;
-                    return;
-                }
-                if !self.allowed(dst) {
-                    return;
-                }
-                let sess = self.session(Network::Tcp, src, dst).await;
-                self.dispatcher.dispatch_stream(sess, Box::new(tcp)).await;
+                self.tcp(tcp, src, dst).await;
             }
             IpStackStream::Udp(udp) => {
                 let (src, dst) = (udp.local_addr(), udp.peer_addr());

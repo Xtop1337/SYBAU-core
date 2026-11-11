@@ -87,7 +87,7 @@ write_config() { # kill_switch
     cat > "$work/sybau.json" <<EOF
 {"log": {"level": "debug"},
  "control": {"enabled": true, "path": "$work/ctl.sock"},
- "inbounds": [{"type": "tun", "tag": "tun", "interface_name": "sybtun0",
+ "inbounds": [{"type": "tun", "tag": "tun", "interface_name": "sybtun0", "stack": "userspace",
                "strict_route": true, "kill_switch": $1,
                "route_exclude_address": ["10.99.0.2/32"]}],
  "outbounds": [{"type": "vless", "tag": "proxy", "server": "10.200.0.1", "port": 20001, "uuid": "$uuid"},
@@ -190,6 +190,33 @@ body="$(in_ns python3 -c 'import urllib.request; print(urllib.request.urlopen("h
 check "other programs are still proxied" "proxied" "$([ -n "$body" ] && [ "$body" != 10.200.0.2 ] && echo proxied || echo "$body")"
 kill -TERM "$core"; wait "$core" 2>/dev/null
 
+echo "system stack (TCP through the kernel):"
+write_config false
+python3 - "$work/sybau.json" <<'PY'
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+cfg["inbounds"][0].update({"stack": "system", "exclude_process": ["curl"]})
+json.dump(cfg, open(sys.argv[1], "w"))
+PY
+start_core
+proxied() { [ -n "$1" ] && [ "$1" != 10.200.0.2 ] && [ "$1" != unreachable ] && echo proxied || echo "$1"; }
+fetch_py='import sys, urllib.request; print(urllib.request.urlopen(sys.argv[1], timeout=5).read().decode())'
+check "TCP is proxied through Xray" "proxied" "$(proxied "$(in_ns python3 -c "$fetch_py" http://10.99.0.1:8080/ 2>&1)")"
+check "the kernel stack served it" "1" "$(grep -c 'system stack (TCP through the OS)' "$work/sybau.log")"
+check "route_exclude_address goes direct" "10.200.0.2" "$(in_ns python3 -c "$fetch_py" http://10.99.0.2:8080/ 2>&1)"
+check "excluded program goes direct (process lookup)" "10.200.0.2" "$(http_body http://10.99.0.1:8080/)"
+udp="$(in_ns python3 "$here/helpers.py" udp-ask 10.99.0.1 9000 2>&1)"
+check "UDP is proxied through Xray" "proxied" "$(case "$udp" in *" ping") [ "${udp%% *}" != 10.200.0.2 ] && echo proxied ;; *) echo "$udp" ;; esac)"
+check "DNS over TCP is hijacked" "rcode=0 10.99.0.1" "$(in_ns python3 "$here/helpers.py" dns-ask 192.0.2.53 hijack.test tcp 2>&1)"
+check "8 MiB download is intact" "8388608 ok" "$(in_ns python3 "$here/helpers.py" fetch http://10.99.0.1:8080/blob 2>&1)"
+speed="$(in_ns python3 -c '
+import time, urllib.request
+t = time.time(); n = len(urllib.request.urlopen("http://10.99.0.1:8080/blob", timeout=20).read())
+print(f"{n / (time.time() - t) / 1048576:.1f} MiB/s")' 2>&1)"
+echo "        (download speed through the system stack + VLESS: $speed)"
+check "ten parallel connections" "10" "$(for i in $(seq 10); do in_ns python3 -c "$fetch_py" http://10.99.0.1:8080/ & done | grep -vc 10.200.0.2)"
+kill -TERM "$core"; wait "$core" 2>/dev/null
+
 echo "a sing-box config, run as is (tun, hijack-dns rule, fake-ip):"
 cat > "$work/sing-box.json" <<EOF
 {"log": {"level": "debug"},
@@ -217,7 +244,7 @@ check "the fake-ip domain is proxied through Xray" "proxied" "$([ -n "$body" ] &
 check "ip_cidr rule sends 10.99.0.2 direct" "10.200.0.2" "$(http_body http://10.99.0.2:8080/)"
 kill -TERM "$core"; wait "$core" 2>/dev/null
 
-echo "descriptor handed over by the platform (Android VpnService style):"
+echo "descriptor handed over by the platform (Android VpnService style, system stack):"
 ip netns exec "$ns" python3 "$here/helpers.py" tun-fd-launch sybfd0 "$work/sybau.json" "$sybau" >>"$work/sybau.log" 2>&1 &
 core=$!
 pids+=($core)
@@ -225,6 +252,7 @@ for _ in $(seq 50); do grep -q "TUN .sybfd0. up" "$work/sybau.log" && break; sle
 body="$(http_body http://10.99.0.1:8080/)"
 check "TCP through the platform's TUN is proxied" "proxied" "$([ "$body" != 10.200.0.2 ] && [ "$body" != unreachable ] && echo proxied || echo "$body")"
 check "the core installed no routes of its own" "0" "$(in_ns ip rule show | grep -c 'lookup 2022')"
+check "the system stack serves the platform's TUN" "yes" "$(tail -n 5 "$work/sybau.log" | grep -q 'system stack (TCP through the OS)' && echo yes || echo no)"
 in_ns "$sybau" ctl --endpoint "$work/ctl.sock" core.reload >/dev/null
 sleep 0.5
 body="$(http_body http://10.99.0.1:8080/)"
