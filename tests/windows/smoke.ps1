@@ -62,7 +62,7 @@ $spConfig = Join-Path $work "sysproxy.json"
 function Expect-Proxy($enable, $server, $what) {
     $p = Get-ItemProperty $key
     if ($p.ProxyEnable -ne $enable -or $p.ProxyServer -ne $server) {
-        Fail "$what: ProxyEnable=$($p.ProxyEnable) ProxyServer=$($p.ProxyServer), expected $enable / $server"
+        Fail "${what}: ProxyEnable=$($p.ProxyEnable) ProxyServer=$($p.ProxyServer), expected $enable / $server"
     }
 }
 
