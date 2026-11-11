@@ -63,7 +63,11 @@ pub fn detect(v: &Value) -> Format {
     {
         return Format::SingBox;
     }
-    if has(&["route", "rules", "action"]) || has(&["dns", "servers", "type"]) {
+    // Rule actions exist in both formats (`reject`); typed DNS servers
+    // only in sing-box. A config that is valid SYBAU stays SYBAU.
+    if (has(&["route", "rules", "action"]) || has(&["dns", "servers", "type"]))
+        && !serde_json::from_value::<Config>(v.clone()).is_ok_and(|c| c.validate().is_ok())
+    {
         return Format::SingBox;
     }
     Format::Sybau

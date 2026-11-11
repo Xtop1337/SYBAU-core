@@ -318,6 +318,31 @@ mod tests {
     }
 
     #[test]
+    fn native_configs_with_rule_actions_stay_native() {
+        let native = r#"{
+          "inbounds": [{"type": "tun", "tag": "tun"}],
+          "outbounds": [{"type": "direct", "tag": "direct"}],
+          "route": {"rules": [{"process_name": ["curl.exe"], "action": "reject"}]}
+        }"#;
+        let imported = parse_any(native).unwrap();
+        assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+        let InboundKind::Tun(t) = &imported.config.inbounds[0].kind else {
+            panic!("not a tun inbound");
+        };
+        assert!(t.dns_hijack, "native defaults kept");
+        // The same shape with sing-box-only fields is sing-box.
+        let sing_box = r#"{
+          "outbounds": [{"type": "direct", "tag": "direct"}],
+          "route": {"rules": [{"protocol": "dns", "action": "hijack-dns"}]}
+        }"#;
+        let cfg = parse_any(sing_box).unwrap().config;
+        assert!(cfg
+            .outbounds
+            .iter()
+            .any(|o| matches!(o.kind, OutboundKind::Dns)));
+    }
+
+    #[test]
     fn xray_dns_outbound_is_imported() {
         let imported = parse_any(
             r#"{
