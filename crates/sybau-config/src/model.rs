@@ -293,6 +293,9 @@ impl<'de> Deserialize<'de> for OutboundConfig {
 pub enum OutboundKind {
     Direct(DirectOutbound),
     Block,
+    /// Answers DNS queries with the core's DNS module (Xray `dns`
+    /// outbound, sing-box `hijack-dns`).
+    Dns,
     /// SOCKS5 upstream proxy.
     Socks(UpstreamProxy),
     /// HTTP CONNECT upstream proxy.
@@ -341,6 +344,7 @@ impl OutboundKind {
         match self {
             OutboundKind::Direct(_) => "direct",
             OutboundKind::Block => "block",
+            OutboundKind::Dns => "dns",
             OutboundKind::Socks(_) => "socks",
             OutboundKind::Http(_) => "http",
             OutboundKind::Vless(_) => "vless",

@@ -51,9 +51,11 @@
 | Подписки: base64, списки ссылок, Clash/mihomo YAML, sing-box/Xray JSON — по содержимому (`sybau import`, `subscriptions.parse`) | готово, проверено |
 | Скачивание подписок по URL и автообновление по таймеру | не начато: содержимое пока передаёт приложение |
 | Системный прокси Windows: включается на время работы `sybau.exe`, восстанавливается при выходе, после падения (сторожевой процесс) и при следующем запуске | готово; проверка — Windows-смоук-тест в CI |
-| TUN на Linux: userspace TCP/IP-стек, IPv4/IPv6, MTU, auto-route (policy routing), strict-route, `route_address` / `route_exclude_address`, перехват DNS (UDP и TCP, на любой сервер), fake-IP, защита от петли (`SO_MARK`), исключение пользователей (`include_uid`/`exclude_uid`) и программ (`include_process`/`exclude_process`), kill switch на nftables (остаётся после падения, переживает `core.reload`), `sybau tun-cleanup` | готово, проверено в network namespace против Xray (`tests/tun/linux-netns.sh`, 28 проверок, в CI) |
+| TUN на Linux: userspace TCP/IP-стек, IPv4/IPv6, MTU, auto-route (policy routing), strict-route, `route_address` / `route_exclude_address`, перехват DNS (UDP и TCP, на любой сервер), fake-IP, защита от петли (`SO_MARK`), исключение пользователей (`include_uid`/`exclude_uid`) и программ (`include_process`/`exclude_process`), kill switch на nftables (остаётся после падения, переживает `core.reload`), `sybau tun-cleanup` | готово, проверено в network namespace против Xray (`tests/tun/linux-netns.sh`, 33 проверки, в CI) |
 | TUN на Android: дескриптор от VpnService (`file_descriptor`; ядро работает с его копией, `core.reload` его не закрывает), `protect` для сокетов ядра | путь с дескриптором проверен на Linux так, как его передаёт VpnService; сборка под Android — в CI |
-| TUN на Windows (Wintun, маршруты, привязка сокетов к физическому интерфейсу, kill switch на WFP) | в работе (этап 5) |
+| TUN на Windows: Wintun (встроен в `sybau.exe` или рядом с ним), маршруты через IP Helper, привязка сокетов ядра к физическому интерфейсу (`IP_UNICAST_IF`, следит за сменой сети), DNS-сервер на адаптере для перехвата, kill switch на WFP (остаётся после падения), блок DNS мимо TUN при `strict_route` | готово; проверяется в CI на windows-latest (`tests/windows/tun.ps1`) |
+| Outbound `dns` (Xray `dns`, sing-box `hijack-dns`): отвечает на запросы через DNS-модуль, UDP и TCP; sniffing распознаёт DNS и в TCP | готово, проверено |
+| Импорт TUN из sing-box (`tun`, старые поля `inet4_address` и т.п.) и Xray (`tun`) | готово, проверено: конфиг sing-box с TUN запускается как есть на стенде TUN |
 | TUN-стеки `system` и `mixed` (TCP через ядро ОС) | в работе: пока всегда используется `userspace` |
 | Hysteria2, Hysteria, TUIC, XHTTP, mKCP | не начато (этап 6) |
 | Серверные inbound, REALITY-сервер, TProxy | не начато (этап 7) |
@@ -271,6 +273,15 @@ TUN (имена полей как в sing-box; показаны значения
   программы. Соединения исключённых программ уходят напрямую, минуя правила.
 - На Android приложение передаёт открытый дескриптор VpnService в
   `file_descriptor`; маршруты и исключения приложений задаёт сам VpnService.
+- На Windows `auto_route` добавляет `0.0.0.0/1` и `128.0.0.0/1` (и `::/1`,
+  `8000::/1`) через адаптер `SYBAU`. Собственные сокеты ядра привязаны к
+  физическому интерфейсу. `wintun.dll` берётся из `wintun_file`, иначе
+  рядом с `sybau.exe`, иначе встроенная копия (сборки CI содержат
+  официальную Wintun 0.14.1 с проверкой SHA-256). `kill_switch` — фильтры
+  WFP, снимаются штатным выходом, `sybau tun-cleanup` или перезагрузкой.
+- Для конфигов в духе Xray и sing-box есть outbound `dns`: правило
+  `{"protocol": "dns", "outbound": "dns-out"}` (или `port: 53`) отправляет
+  запросы в DNS-модуль; встроенный `dns_hijack` у TUN делает то же сам.
 
 Системный прокси Windows (по умолчанию объявляется первый `mixed`/`http` inbound):
 

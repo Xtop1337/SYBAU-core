@@ -232,14 +232,25 @@ fn sniff_other_datagram(d: &[u8]) -> SniffResult {
     if d.len() == 20 && d[0] == 0x41 && d[1] <= 2 && d[16..18] == [0, 1] {
         return bittorrent;
     }
-    // DNS query: one question, no answers, QR bit clear.
-    if d.len() >= 17 && d[2] & 0x80 == 0 && d[4..6] == [0, 1] && d[6..12] == [0, 0, 0, 0, 0, 0] {
+    if d.len() >= 17 && is_dns_query(d) {
         return SniffResult::Found(Sniffed {
             protocol: "dns",
             host: None,
         });
     }
     SniffResult::Unknown
+}
+
+/// A DNS query header: QR clear, standard query, one question, no
+/// answers or authority records, at most one additional (EDNS OPT).
+pub(crate) fn is_dns_query(d: &[u8]) -> bool {
+    d.len() >= 12
+        && d[2] & 0x80 == 0
+        && (d[2] >> 3) & 0x0f == 0
+        && d[4..6] == [0, 1]
+        && d[6..10] == [0, 0, 0, 0]
+        && d[10] == 0
+        && d[11] <= 1
 }
 
 #[cfg(test)]

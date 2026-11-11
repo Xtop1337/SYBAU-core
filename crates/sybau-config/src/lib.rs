@@ -289,6 +289,63 @@ mod tests {
     }
 
     #[test]
+    fn sing_box_tun_and_hijack_dns_are_imported() {
+        let imported = parse_any(
+            r#"{
+              "inbounds": [{"type": "tun", "tag": "tun-in", "interface_name": "tun0",
+                            "inet4_address": "172.18.0.1/30", "auto_route": true,
+                            "strict_route": true, "stack": "mixed",
+                            "include_package": ["org.example"]}],
+              "outbounds": [{"type": "direct", "tag": "direct"}],
+              "route": {"rules": [{"protocol": "dns", "action": "hijack-dns"}]}
+            }"#,
+        )
+        .unwrap();
+        let cfg = imported.config;
+        let InboundKind::Tun(t) = &cfg.inbounds[0].kind else {
+            panic!("not a tun inbound");
+        };
+        assert_eq!(t.interface_name, "tun0");
+        assert_eq!(t.address, ["172.18.0.1/30"]);
+        assert!(t.strict_route && !t.dns_hijack);
+        assert_eq!(t.stack, "mixed");
+        assert!(matches!(cfg.outbounds[1].kind, OutboundKind::Dns));
+        assert_eq!(cfg.route.rules[0].outbound.as_deref(), Some("hijack-dns"));
+        assert!(imported
+            .warnings
+            .iter()
+            .any(|w| w.contains("include_package")));
+    }
+
+    #[test]
+    fn xray_dns_outbound_is_imported() {
+        let imported = parse_any(
+            r#"{
+              "inbounds": [{"protocol": "socks", "port": 1080, "listen": "127.0.0.1"}],
+              "outbounds": [{"protocol": "freedom", "tag": "direct"},
+                            {"protocol": "dns", "tag": "dns-out"}],
+              "routing": {"rules": [{"type": "field", "port": "53", "outboundTag": "dns-out"}]}
+            }"#,
+        )
+        .unwrap();
+        let cfg = imported.config;
+        assert!(matches!(cfg.outbounds[1].kind, OutboundKind::Dns));
+        assert_eq!(cfg.outbounds[1].tag, "dns-out");
+        let tun = parse_any(
+            r#"{"inbounds": [{"protocol": "tun", "tag": "t", "settings": {"name": "xtun", "MTU": 1400}}],
+                "outbounds": [{"protocol": "freedom"}]}"#,
+        )
+        .unwrap()
+        .config;
+        let InboundKind::Tun(t) = &tun.inbounds[0].kind else {
+            panic!("not a tun inbound");
+        };
+        assert_eq!((t.interface_name.as_str(), t.mtu), ("xtun", 1400));
+        assert!(!t.dns_hijack);
+        assert_eq!(cfg.route.rules[0].outbound.as_deref(), Some("dns-out"));
+    }
+
+    #[test]
     fn minimal_config_parses() {
         let cfg = parse_native(
             r#"{

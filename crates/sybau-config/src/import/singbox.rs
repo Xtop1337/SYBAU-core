@@ -28,6 +28,7 @@ fn inbound(mut ib: Value, notes: &mut Notes) -> Option<Value> {
     let tag = ib["tag"].as_str().unwrap_or("").to_string();
     match kind.as_str() {
         "mixed" | "socks" | "http" => {}
+        "tun" => return Some(tun_inbound(ib, &tag, notes)),
         other => {
             notes.add(format!(
                 "inbound `{tag}` of type `{other}` is not supported yet and was skipped"
@@ -53,6 +54,100 @@ fn inbound(mut ib: Value, notes: &mut Notes) -> Option<Value> {
         }
     }
     Some(ib)
+}
+
+/// A string or a list of strings, as sing-box accepts for addresses.
+fn strings(v: Option<Value>) -> Vec<Value> {
+    match v {
+        Some(Value::Array(list)) => list.into_iter().filter(Value::is_string).collect(),
+        Some(s @ Value::String(_)) => vec![s],
+        _ => Vec::new(),
+    }
+}
+
+fn tun_inbound(mut ib: Value, tag: &str, notes: &mut Notes) -> Value {
+    let ctx = format!("inbound `{tag}` (tun)");
+    let mut out = json!({"type": "tun"});
+    if !tag.is_empty() {
+        out["tag"] = json!(tag);
+    }
+    take(&mut ib, "type");
+    take(&mut ib, "tag");
+    for key in [
+        "interface_name",
+        "mtu",
+        "auto_route",
+        "strict_route",
+        "include_uid",
+        "exclude_uid",
+        "udp_timeout",
+    ] {
+        if let Some(v) = take(&mut ib, key) {
+            out[key] = v;
+        }
+    }
+    if let Some(stack) = take_str(&mut ib, "stack") {
+        out["stack"] = json!(stack);
+    }
+    // 1.10+ lists, or the older per-family fields.
+    for (new, old4, old6) in [
+        ("address", "inet4_address", "inet6_address"),
+        (
+            "route_address",
+            "inet4_route_address",
+            "inet6_route_address",
+        ),
+        (
+            "route_exclude_address",
+            "inet4_route_exclude_address",
+            "inet6_route_exclude_address",
+        ),
+    ] {
+        let mut list = strings(take(&mut ib, new));
+        list.extend(strings(take(&mut ib, old4)));
+        list.extend(strings(take(&mut ib, old6)));
+        if !list.is_empty() {
+            out[new] = json!(list);
+        }
+    }
+    if let Some(t) = take(&mut ib, "iproute2_table_index") {
+        out["table"] = t;
+    }
+    // sing-box answers DNS only through `hijack-dns` rules, which are
+    // converted into routes to a `dns` outbound.
+    out["dns_hijack"] = json!(false);
+    let sniff = take(&mut ib, "sniff").and_then(|v| v.as_bool());
+    let override_destination =
+        take(&mut ib, "sniff_override_destination").and_then(|v| v.as_bool());
+    if sniff.is_some() || override_destination.is_some() {
+        out["sniff"] = json!({"enabled": sniff.unwrap_or(true), "override_destination": override_destination.unwrap_or(false)});
+    }
+    for key in ["include_package", "exclude_package", "include_android_user"] {
+        if take(&mut ib, key).is_some() {
+            notes.add(format!(
+                "{ctx}: `{key}` is applied by the Android app (VpnService), not by the core"
+            ));
+        }
+    }
+    for key in [
+        "platform",
+        "endpoint_independent_nat",
+        "gso",
+        "iproute2_rule_index",
+        "auto_redirect_input_mark",
+        "auto_redirect_output_mark",
+    ] {
+        take(&mut ib, key);
+    }
+    for key in DROP_INBOUND_KEYS {
+        take(&mut ib, key);
+    }
+    if let Value::Object(rest) = ib {
+        for key in rest.keys() {
+            notes.add(format!("{ctx}: `{key}` is not supported and was ignored"));
+        }
+    }
+    out
 }
 
 fn tls(mut t: Value, ctx: &str, notes: &mut Notes) -> Option<Value> {
@@ -280,12 +375,7 @@ fn outbound(mut ob: Value, notes: &mut Notes) -> Result<Option<Value>> {
             return Ok(Some(ob));
         }
         "block" => return Ok(Some(json!({"type": "block", "tag": tag}))),
-        "dns" => {
-            notes.add(format!(
-                "{ctx}: legacy `dns` outbound dropped; DNS hijacking comes with TUN"
-            ));
-            return Ok(None);
-        }
+        "dns" => return Ok(Some(json!({"type": "dns", "tag": tag}))),
         "urltest" => {
             let mut out = json!({"type": "balancer", "tag": tag, "strategy": "least_ping"});
             out["outbounds"] = take(&mut ob, "outbounds").unwrap_or(json!([]));
@@ -425,8 +515,9 @@ const UNSUPPORTED_RULE_KEYS: &[&str] = &[
     "client",
 ];
 
-/// Converts a route rule; `None` drops it with a note.
-fn route_rule(mut rule: Value, index: usize, notes: &mut Notes) -> Option<Value> {
+/// Converts a route rule; `None` drops it with a note. `hijack-dns`
+/// becomes a route to the `dns` outbound tagged `hijack`.
+fn route_rule(mut rule: Value, index: usize, hijack: &str, notes: &mut Notes) -> Option<Value> {
     let action = rule
         .get("action")
         .and_then(Value::as_str)
@@ -435,6 +526,10 @@ fn route_rule(mut rule: Value, index: usize, notes: &mut Notes) -> Option<Value>
     match action.as_str() {
         "route" | "route-options" if rule.get("outbound").is_some() => {
             take(&mut rule, "action");
+        }
+        "hijack-dns" => {
+            take(&mut rule, "action");
+            rule["outbound"] = json!(hijack);
         }
         "reject" => {
             take(&mut rule, "method");
@@ -661,25 +756,46 @@ pub fn convert(mut v: Value) -> Result<Imported> {
     if let Some(Value::Array(list)) = take(&mut v, "endpoints") {
         outbounds.extend(list.into_iter().filter_map(|ep| endpoint(ep, &mut notes)));
     }
-    let tags: Vec<String> = outbounds
+    let mut tags: Vec<String> = outbounds
         .iter()
         .filter_map(|o| o["tag"].as_str().map(str::to_string))
         .collect();
+    // Outbound that `hijack-dns` rules route to, added if they exist.
+    let hijack = (0..)
+        .map(|i| {
+            if i == 0 {
+                "hijack-dns".to_string()
+            } else {
+                format!("hijack-dns-{i}")
+            }
+        })
+        .find(|t| !tags.contains(t))
+        .expect("a free tag");
     // Groups lose members that were dropped.
     for ob in outbounds.iter_mut() {
         if let Some(Value::Array(members)) = ob.get_mut("outbounds") {
             members.retain(|m| m.as_str().is_some_and(|m| tags.iter().any(|t| t == m)));
         }
     }
+    let mut route = take(&mut v, "route");
+    let uses_hijack = route
+        .as_ref()
+        .and_then(|r| r.get("rules"))
+        .and_then(Value::as_array)
+        .is_some_and(|rules| rules.iter().any(|r| r["action"] == "hijack-dns"));
+    if uses_hijack {
+        outbounds.push(json!({"type": "dns", "tag": hijack}));
+        tags.push(hijack.clone());
+    }
     out["outbounds"] = json!(outbounds);
 
-    if let Some(mut route) = take(&mut v, "route") {
+    if let Some(mut route) = route.take() {
         let mut r = json!({});
         if let Some(Value::Array(rules)) = take(&mut route, "rules") {
             let converted: Vec<Value> = rules
                 .into_iter()
                 .enumerate()
-                .filter_map(|(i, rule)| route_rule(rule, i, &mut notes))
+                .filter_map(|(i, rule)| route_rule(rule, i, &hijack, &mut notes))
                 .filter(|rule| {
                     rule.get("outbound")
                         .and_then(Value::as_str)

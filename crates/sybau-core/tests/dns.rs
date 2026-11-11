@@ -456,3 +456,102 @@ async fn invalid_dns_configs_are_rejected() {
         );
     }
 }
+
+/// A wire-format A query, built by hand.
+fn raw_query(id: u16, name: &str) -> Vec<u8> {
+    let mut q = Vec::new();
+    q.extend_from_slice(&id.to_be_bytes());
+    q.extend_from_slice(&[1, 0, 0, 1, 0, 0, 0, 0, 0, 0]);
+    for label in name.split('.') {
+        q.push(label.len() as u8);
+        q.extend_from_slice(label.as_bytes());
+    }
+    q.extend_from_slice(&[0, 0, 1, 0, 1]);
+    q
+}
+
+/// The last A record of a reply.
+fn last_a(reply: &[u8]) -> [u8; 4] {
+    reply[reply.len() - 4..].try_into().unwrap()
+}
+
+#[tokio::test]
+async fn dns_outbound_answers_over_udp_and_tcp() {
+    let upstream = serve_udp(zone(&[("real.test", [192, 0, 2, 10])])).await;
+    let core = start_config(json!({
+        "outbounds": [{"type": "direct", "tag": "direct"}, {"type": "dns", "tag": "dns-out"}],
+        "dns": {"servers": [{"tag": "up", "address": format!("udp://{upstream}")}],
+                "hosts": {"local.test": ["192.0.2.7"]}},
+        // Xray style: everything for port 53 goes to the DNS outbound.
+        "route": {"rules": [{"port": [53], "outbound": "dns-out"}]},
+    }))
+    .await;
+
+    // TCP: length-prefixed queries through SOCKS5 CONNECT to any server.
+    let mut s = core.connect("203.0.113.1", 53).await;
+    for (id, name, want) in [
+        (1u16, "local.test", [192, 0, 2, 7]),
+        (2, "real.test", [192, 0, 2, 10]),
+    ] {
+        let q = raw_query(id, name);
+        s.write_all(&(q.len() as u16).to_be_bytes()).await.unwrap();
+        s.write_all(&q).await.unwrap();
+        let len = s.read_u16().await.unwrap() as usize;
+        let mut reply = vec![0u8; len];
+        s.read_exact(&mut reply).await.unwrap();
+        assert_eq!(&reply[..2], &id.to_be_bytes());
+        assert_eq!(last_a(&reply), want, "{name} over TCP");
+    }
+    drop(s);
+
+    // UDP: SOCKS5 UDP ASSOCIATE.
+    let mut ctrl = tokio::net::TcpStream::connect(("127.0.0.1", core.port))
+        .await
+        .unwrap();
+    ctrl.write_all(&[5, 1, 0]).await.unwrap();
+    let mut rep = [0u8; 2];
+    ctrl.read_exact(&mut rep).await.unwrap();
+    ctrl.write_all(&[5, 3, 0, 1, 0, 0, 0, 0, 0, 0])
+        .await
+        .unwrap();
+    let mut rep = [0u8; 10];
+    ctrl.read_exact(&mut rep).await.unwrap();
+    let relay = SocketAddr::from((
+        [rep[4], rep[5], rep[6], rep[7]],
+        u16::from_be_bytes([rep[8], rep[9]]),
+    ));
+    let sock = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let mut pkt = vec![0, 0, 0, 1, 203, 0, 113, 1, 0, 53];
+    pkt.extend_from_slice(&raw_query(3, "local.test"));
+    sock.send_to(&pkt, relay).await.unwrap();
+    let mut buf = [0u8; 2048];
+    let (n, _) = tokio::time::timeout(std::time::Duration::from_secs(5), sock.recv_from(&mut buf))
+        .await
+        .unwrap()
+        .unwrap();
+    // The answer appears to come from the server the query was sent to.
+    assert_eq!(&buf[..10], &[0, 0, 0, 1, 203, 0, 113, 1, 0, 53]);
+    assert_eq!(last_a(&buf[10..n]), [192, 0, 2, 7]);
+    core.engine.stop().await;
+}
+
+#[tokio::test]
+async fn dns_outbound_works_without_a_dns_section() {
+    let core = start_config(json!({
+        "outbounds": [{"type": "direct", "tag": "direct"}, {"type": "dns", "tag": "dns-out"}],
+        "route": {"rules": [{"port": [53], "outbound": "dns-out"}]},
+    }))
+    .await;
+    let mut s = core.connect("203.0.113.1", 53).await;
+    let q = raw_query(9, "localhost");
+    s.write_all(&(q.len() as u16).to_be_bytes()).await.unwrap();
+    s.write_all(&q).await.unwrap();
+    let len = tokio::time::timeout(std::time::Duration::from_secs(5), s.read_u16())
+        .await
+        .unwrap()
+        .unwrap() as usize;
+    let mut reply = vec![0u8; len];
+    s.read_exact(&mut reply).await.unwrap();
+    assert_eq!(last_a(&reply), [127, 0, 0, 1]);
+    core.engine.stop().await;
+}

@@ -20,7 +20,30 @@ pub fn sniff_stream(data: &[u8]) -> SniffResult {
         SniffResult::Unknown => {}
         other => return other,
     }
+    match sniff_dns_tcp(data) {
+        SniffResult::Unknown => {}
+        other => return other,
+    }
     sniff_http(data)
+}
+
+/// DNS over TCP: a 2-byte length, then a query header.
+fn sniff_dns_tcp(data: &[u8]) -> SniffResult {
+    // Lengths of real queries start with 0x00 or 0x01.
+    if data[0] > 1 {
+        return SniffResult::Unknown;
+    }
+    if data.len() < 14 {
+        return SniffResult::NeedMore;
+    }
+    let len = usize::from(u16::from_be_bytes([data[0], data[1]]));
+    if len >= 17 && super::quic::is_dns_query(&data[2..]) {
+        return SniffResult::Found(Sniffed {
+            protocol: "dns",
+            host: None,
+        });
+    }
+    SniffResult::Unknown
 }
 
 /// TLS ClientHello, possibly split over several handshake records.
@@ -201,6 +224,27 @@ pub(crate) mod tests {
             protocol,
             host: host.map(str::to_string),
         })
+    }
+
+    #[test]
+    fn dns_over_tcp() {
+        // EDNS query (one OPT record), length-prefixed.
+        let mut q = vec![0x12, 0x34, 0x01, 0x20, 0, 1, 0, 0, 0, 0, 0, 1];
+        q.extend_from_slice(b"\x07example\x03com\x00\x00\x01\x00\x01");
+        q.extend_from_slice(&[0, 0, 41, 0x10, 0, 0, 0, 0, 0, 0, 0]);
+        let mut framed = (q.len() as u16).to_be_bytes().to_vec();
+        framed.extend_from_slice(&q);
+        assert_eq!(
+            sniff_stream(&framed),
+            SniffResult::Found(Sniffed {
+                protocol: "dns",
+                host: None
+            })
+        );
+        assert_eq!(sniff_stream(&framed[..8]), SniffResult::NeedMore);
+        // A response is not a query.
+        framed[4] |= 0x80;
+        assert_eq!(sniff_stream(&framed), SniffResult::Unknown);
     }
 
     #[test]

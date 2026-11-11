@@ -26,6 +26,8 @@ pub struct BuildContext {
     pub socket: SocketOpts,
     /// Selector choices to restore (kept across config reloads).
     pub selections: HashMap<String, String>,
+    /// Filled with the DNS module once it is built (`dns` outbounds).
+    pub dns: crate::dns::DnsSlot,
 }
 
 impl BuildContext {
@@ -131,6 +133,10 @@ impl OutboundManager {
                 }
             }
             OutboundKind::Block => Ok(Arc::new(Block { tag: tag.clone() })),
+            OutboundKind::Dns => Ok(Arc::new(crate::dns::DnsOutbound::new(
+                tag.clone(),
+                ctx.dns.clone(),
+            ))),
             OutboundKind::Socks(c) => {
                 upstream::Socks5::new(tag.clone(), c, via(detour)).map(|o| Arc::new(o) as _)
             }

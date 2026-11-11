@@ -355,10 +355,14 @@ fn outbound(ob: &Value, notes: &mut Notes) -> Result<Option<Value>> {
         }
         "blackhole" | "block" => json!({"type": "block"}),
         "dns" => {
-            notes.add(format!(
-                "{ctx}: Xray `dns` outbound dropped; DNS hijacking comes with TUN"
-            ));
-            return Ok(None);
+            for key in ["network", "address", "port", "nonIPQuery", "blockTypes"] {
+                if settings.get(key).is_some() {
+                    notes.add(format!(
+                        "{ctx}: dns `{key}` is ignored; queries are answered by the DNS module"
+                    ));
+                }
+            }
+            json!({"type": "dns"})
         }
         "vless" => {
             let server = first(&settings, "vnext").unwrap_or_else(|| settings.clone());
@@ -764,6 +768,7 @@ fn inbound(ib: &Value, index: usize, notes: &mut Notes) -> Option<Value> {
         // Xray's socks inbound also answers HTTP proxy requests.
         "socks" | "mixed" => "mixed",
         "http" => "http",
+        "tun" => return Some(tun_inbound(ib, &tag, notes)),
         other => {
             notes.add(format!(
                 "inbound `{tag}`: protocol `{other}` is not supported yet and was skipped"
@@ -802,6 +807,40 @@ fn inbound(ib: &Value, index: usize, notes: &mut Notes) -> Option<Value> {
     // the target unless routeOnly is set.
     out["sniff"] = json!({"enabled": enabled, "override_destination": enabled && !route_only});
     Some(out)
+}
+
+/// Xray's TUN inbound only creates the interface (`name`, `MTU`); the
+/// address and routes are set up outside Xray, and DNS goes through the
+/// routing rules.
+fn tun_inbound(ib: &Value, tag: &str, notes: &mut Notes) -> Value {
+    let settings = ib.get("settings").cloned().unwrap_or(json!({}));
+    let name = settings
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|n| !n.is_empty())
+        .unwrap_or("xray0");
+    let mtu = settings
+        .get("MTU")
+        .and_then(Value::as_u64)
+        .filter(|m| *m > 0)
+        .unwrap_or(1500);
+    notes.add(format!(
+        "inbound `{tag}` (tun): Xray leaves addresses and routes to the system; here the core sets them up (auto_route), DNS is answered through the routing rules"
+    ));
+    let sniffing = ib.get("sniffing");
+    let enabled = sniffing
+        .and_then(|s| s.get("enabled"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let route_only = sniffing
+        .and_then(|s| s.get("routeOnly"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    json!({
+        "type": "tun", "tag": tag, "interface_name": name, "mtu": mtu,
+        "dns_hijack": false,
+        "sniff": {"enabled": enabled, "override_destination": enabled && !route_only},
+    })
 }
 
 /// Xray DNS server string or object into one of our servers.

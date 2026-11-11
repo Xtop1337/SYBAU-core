@@ -105,7 +105,7 @@ start_core() {
     local before
     before=$(wc -l < "$work/sybau.log" 2>/dev/null || echo 0)
     # Not through `in_ns`: `$!` must be the core itself, not a subshell.
-    ip netns exec "$ns" "$sybau" run -c "$work/sybau.json" >>"$work/sybau.log" 2>&1 &
+    ip netns exec "$ns" "$sybau" run -c "${1:-$work/sybau.json}" >>"$work/sybau.log" 2>&1 &
     core=$!
     pids+=($core)
     for _ in $(seq 100); do
@@ -188,6 +188,33 @@ check "excluded user goes direct (kernel rule)" "10.200.0.2" "$(in_ns setpriv --
 check "excluded program goes direct (process lookup)" "10.200.0.2" "$(http_body http://10.99.0.1:8080/)"
 body="$(in_ns python3 -c 'import urllib.request; print(urllib.request.urlopen("http://10.99.0.1:8080/", timeout=5).read().decode())' 2>&1)"
 check "other programs are still proxied" "proxied" "$([ -n "$body" ] && [ "$body" != 10.200.0.2 ] && echo proxied || echo "$body")"
+kill -TERM "$core"; wait "$core" 2>/dev/null
+
+echo "a sing-box config, run as is (tun, hijack-dns rule, fake-ip):"
+cat > "$work/sing-box.json" <<EOF
+{"log": {"level": "debug"},
+ "dns": {"servers": [{"type": "udp", "tag": "up", "server": "10.200.0.1"},
+                     {"type": "fakeip", "tag": "fake", "inet4_range": "198.18.0.0/15"}],
+         "rules": [{"domain_suffix": ["fake.test"], "server": "fake"}]},
+ "inbounds": [{"type": "tun", "tag": "tun", "interface_name": "sybtun0", "address": ["172.19.0.1/30"],
+               "auto_route": true, "strict_route": true}],
+ "outbounds": [{"type": "vless", "tag": "proxy", "server": "10.200.0.1", "server_port": 20001, "uuid": "$uuid"},
+               {"type": "direct", "tag": "direct"}],
+ "route": {"rules": [{"action": "sniff"}, {"protocol": "dns", "action": "hijack-dns"},
+                     {"ip_cidr": ["10.99.0.2/32"], "outbound": "direct"}],
+           "final": "proxy", "default_domain_resolver": "up"}}
+EOF
+singbox="${SINGBOX_BIN:-$here/../interop/.bin/sing-box}"
+if [ -x "$singbox" ]; then
+    check "sing-box itself accepts the config" "0" "$("$singbox" check -c "$work/sing-box.json" >/dev/null 2>&1; echo $?)"
+fi
+start_core "$work/sing-box.json"
+fake="$(in_ns python3 "$here/helpers.py" dns-ask 192.0.2.53 www.fake.test 2>&1)"
+check "hijack-dns rule answers with fake-ip" "fake" "$(case "$fake" in "rcode=0 198.1"[89].*) echo fake ;; *) echo "$fake" ;; esac)"
+check "hijack-dns rule answers DNS over TCP" "fake" "$(case "$(in_ns python3 "$here/helpers.py" dns-ask 192.0.2.53 www.fake.test tcp 2>&1)" in "rcode=0 198.1"[89].*) echo fake ;; *) echo no ;; esac)"
+body="$(in_ns curl -s --max-time 5 http://www.fake.test:8080/ 2>&1)"
+check "the fake-ip domain is proxied through Xray" "proxied" "$([ -n "$body" ] && [ "$body" != 10.200.0.2 ] && echo proxied || echo "$body")"
+check "ip_cidr rule sends 10.99.0.2 direct" "10.200.0.2" "$(http_body http://10.99.0.2:8080/)"
 kill -TERM "$core"; wait "$core" 2>/dev/null
 
 echo "descriptor handed over by the platform (Android VpnService style):"

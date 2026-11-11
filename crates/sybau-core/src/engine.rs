@@ -186,15 +186,21 @@ impl Engine {
         let socket = self.base_socket_opts(tun.as_ref());
         // Under a TUN the system resolver's own queries would come back
         // through the TUN, so the DNS module always exists then.
-        if tun.is_some() && config.dns.is_none() {
+        let has_dns_outbound = config
+            .outbounds
+            .iter()
+            .any(|o| matches!(o.kind, OutboundKind::Dns));
+        if (tun.is_some() || has_dns_outbound) && config.dns.is_none() {
             config.dns = Some(crate::dns::default_config());
         }
+        let dns_slot = crate::dns::DnsSlot::default();
         // Outbounds resolve through the DNS module once it exists.
         let late = Arc::new(crate::dns::LateResolver::default());
         let ctx = BuildContext {
             resolver: late.clone(),
             socket: socket.clone(),
             selections: self.inner.selections.lock().clone(),
+            dns: dns_slot.clone(),
         };
         let outbounds = OutboundManager::build(&config.outbounds, &ctx)?;
         let final_tag: Arc<str> = match &config.route.r#final {
@@ -220,6 +226,7 @@ impl Engine {
                     .context("dns")?,
                 );
                 late.set(dns.clone());
+                let _ = dns_slot.set(dns.clone());
                 Some(dns)
             }
             None => None,

@@ -546,3 +546,132 @@ impl Resolver for LateResolver {
         }
     }
 }
+
+/// Answers one DNS message from an application; `None` for garbage.
+pub async fn answer(dns: &DnsResolver, packet: &[u8]) -> Option<Vec<u8>> {
+    let query = Message::parse(packet).ok()?;
+    if query.response {
+        return None;
+    }
+    dns.exchange(&query).await.encode().ok()
+}
+
+const DNS_TCP_IDLE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// DNS over TCP (length-prefixed messages), answered in order.
+pub async fn serve_tcp<S>(dns: &DnsResolver, mut stream: S)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut buf = vec![0u8; 65535];
+    loop {
+        let len = match tokio::time::timeout(DNS_TCP_IDLE, stream.read_u16()).await {
+            Ok(Ok(len)) => usize::from(len),
+            _ => return,
+        };
+        if stream.read_exact(&mut buf[..len]).await.is_err() {
+            return;
+        }
+        let Some(reply) = answer(dns, &buf[..len]).await else {
+            return;
+        };
+        let Ok(rlen) = u16::try_from(reply.len()) else {
+            return;
+        };
+        let mut out = Vec::with_capacity(reply.len() + 2);
+        out.extend_from_slice(&rlen.to_be_bytes());
+        out.extend_from_slice(&reply);
+        if stream.write_all(&out).await.is_err() || stream.flush().await.is_err() {
+            return;
+        }
+    }
+}
+
+/// DNS module handed to `dns` outbounds once it is built (they are built
+/// before it, since DNS servers may dial through outbounds).
+pub type DnsSlot = Arc<OnceLock<Arc<DnsResolver>>>;
+
+/// `dns` outbound: answers the queries it receives instead of relaying
+/// them (Xray `dns` outbound, sing-box `hijack-dns`).
+pub struct DnsOutbound {
+    tag: Arc<str>,
+    dns: DnsSlot,
+}
+
+impl DnsOutbound {
+    pub fn new(tag: Arc<str>, dns: DnsSlot) -> Self {
+        Self { tag, dns }
+    }
+
+    fn resolver(&self) -> io::Result<Arc<DnsResolver>> {
+        self.dns
+            .get()
+            .cloned()
+            .ok_or_else(|| io_err(io::ErrorKind::NotConnected, "DNS module is not ready"))
+    }
+}
+
+#[async_trait]
+impl Outbound for DnsOutbound {
+    fn tag(&self) -> &str {
+        &self.tag
+    }
+    fn kind(&self) -> &'static str {
+        "dns"
+    }
+    async fn connect(&self, _sess: &Session) -> io::Result<BoxStream> {
+        let dns = self.resolver()?;
+        let (ours, theirs) = tokio::io::duplex(64 * 1024);
+        tokio::spawn(async move { serve_tcp(&dns, theirs).await });
+        Ok(Box::new(ours))
+    }
+    async fn bind(&self, _sess: &Session) -> io::Result<ArcPacketConn> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        Ok(Arc::new(DnsPackets {
+            dns: self.resolver()?,
+            replies: tx,
+            pending: tokio::sync::Mutex::new(rx),
+        }))
+    }
+}
+
+/// Queries go in with `send_to`; answers come back from `recv_from` as if
+/// sent by the server they were addressed to.
+struct DnsPackets {
+    dns: Arc<DnsResolver>,
+    replies: tokio::sync::mpsc::UnboundedSender<(Vec<u8>, Target)>,
+    pending: tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<(Vec<u8>, Target)>>,
+}
+
+#[async_trait]
+impl sybau_common::PacketConn for DnsPackets {
+    async fn send_to(&self, buf: &[u8], dst: &Target) -> io::Result<usize> {
+        let (dns, tx, packet, dst) = (
+            self.dns.clone(),
+            self.replies.clone(),
+            buf.to_vec(),
+            dst.clone(),
+        );
+        // Answered concurrently: A and AAAA often arrive together.
+        tokio::spawn(async move {
+            if let Some(reply) = answer(&dns, &packet).await {
+                let _ = tx.send((reply, dst));
+            }
+        });
+        Ok(buf.len())
+    }
+
+    async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, Target)> {
+        let (reply, from) = self
+            .pending
+            .lock()
+            .await
+            .recv()
+            .await
+            .ok_or_else(|| io_err(io::ErrorKind::UnexpectedEof, "closed"))?;
+        let n = reply.len().min(buf.len());
+        buf[..n].copy_from_slice(&reply[..n]);
+        Ok((n, from))
+    }
+}

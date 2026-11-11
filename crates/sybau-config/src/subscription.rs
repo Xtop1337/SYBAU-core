@@ -22,6 +22,7 @@ fn is_proxy(o: &OutboundConfig) -> bool {
         o.kind,
         OutboundKind::Direct(_)
             | OutboundKind::Block
+            | OutboundKind::Dns
             | OutboundKind::Selector(_)
             | OutboundKind::Balancer(_)
     )

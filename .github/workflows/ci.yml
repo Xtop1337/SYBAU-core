@@ -53,14 +53,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p sybau
-      - name: Take the Xray binary from the official image
+      - name: Take Xray and sing-box from the official images
         run: |
           id=$(docker create ghcr.io/xtls/xray-core:26.3.27)
           docker cp "$id:/usr/local/bin/xray" "$RUNNER_TEMP/xray"
           docker rm "$id"
+          id=$(docker create ghcr.io/sagernet/sing-box:v1.14.4)
+          docker cp "$id:/usr/local/bin/sing-box" "$RUNNER_TEMP/sing-box"
+          docker rm "$id"
       - run: sudo apt-get install -y --no-install-recommends nftables
-      - name: TUN, routes, DNS hijack, fake-ip, kill switch, exclusions
-        run: sudo XRAY_BIN="$RUNNER_TEMP/xray" tests/tun/linux-netns.sh target/debug/sybau
+      - name: TUN, routes, DNS hijack, fake-ip, kill switch, exclusions, sing-box config
+        run: sudo XRAY_BIN="$RUNNER_TEMP/xray" SINGBOX_BIN="$RUNNER_TEMP/sing-box" tests/tun/linux-netns.sh target/debug/sybau
 
   test-windows:
     runs-on: windows-latest

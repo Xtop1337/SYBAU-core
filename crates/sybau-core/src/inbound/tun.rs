@@ -13,9 +13,8 @@ use async_trait::async_trait;
 use sybau_common::net::InterfaceIndex;
 use sybau_common::{io_err, Network, PacketConn, Session, SniffOptions, Target};
 use sybau_config::TunInbound as TunConfig;
-use sybau_dns::message::Message;
 use sybau_tun::routes::{RouteOptions, Routes};
-use sybau_tun::{IpStackStream, IpStackTcpStream, IpStackUdpStream, Tun, TunOptions};
+use sybau_tun::{IpStackStream, IpStackUdpStream, Tun, TunOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
@@ -24,7 +23,6 @@ use crate::dispatch::Dispatcher;
 use crate::dns::DnsResolver;
 
 const DEFAULT_UDP_TIMEOUT: Duration = Duration::from_secs(300);
-const DNS_TCP_IDLE: Duration = Duration::from_secs(30);
 
 /// An opened TUN interface with its routes, ready to serve.
 pub struct TunInbound {
@@ -279,7 +277,7 @@ impl Ctx {
                 let (src, dst) = (tcp.local_addr(), tcp.peer_addr());
                 if let Some(dns) = self.hijacked(dst) {
                     debug!(target: "sybau::dns", "hijacked DNS over TCP {src} -> {dst}");
-                    serve_dns_tcp(dns, tcp).await;
+                    crate::dns::serve_tcp(&dns, tcp).await;
                     return;
                 }
                 if !self.allowed(dst) {
@@ -384,14 +382,6 @@ impl PacketConn for FlowConn {
     }
 }
 
-async fn answer(dns: &DnsResolver, packet: &[u8]) -> Option<Vec<u8>> {
-    let query = Message::parse(packet).ok()?;
-    if query.response {
-        return None;
-    }
-    dns.exchange(&query).await.encode().ok()
-}
-
 /// Answers DNS datagrams of one flow; queries are answered concurrently
 /// (resolvers send A and AAAA from the same socket at once).
 async fn serve_dns_udp(dns: Arc<DnsResolver>, udp: IpStackUdpStream) {
@@ -406,36 +396,10 @@ async fn serve_dns_udp(dns: Arc<DnsResolver>, udp: IpStackUdpStream) {
         let packet = buf[..n].to_vec();
         let (dns, writer) = (dns.clone(), writer.clone());
         tokio::spawn(async move {
-            if let Some(reply) = answer(&dns, &packet).await {
+            if let Some(reply) = crate::dns::answer(&dns, &packet).await {
                 let _ = writer.lock().await.write(&reply).await;
             }
         });
-    }
-}
-
-/// DNS over TCP: length-prefixed messages, answered in order.
-async fn serve_dns_tcp(dns: Arc<DnsResolver>, mut tcp: IpStackTcpStream) {
-    let mut buf = vec![0u8; 65535];
-    loop {
-        let len = match tokio::time::timeout(DNS_TCP_IDLE, tcp.read_u16()).await {
-            Ok(Ok(len)) => usize::from(len),
-            _ => return,
-        };
-        if tcp.read_exact(&mut buf[..len]).await.is_err() {
-            return;
-        }
-        let Some(reply) = answer(&dns, &buf[..len]).await else {
-            return;
-        };
-        let Ok(rlen) = u16::try_from(reply.len()) else {
-            return;
-        };
-        let mut out = Vec::with_capacity(reply.len() + 2);
-        out.extend_from_slice(&rlen.to_be_bytes());
-        out.extend_from_slice(&reply);
-        if tcp.write_all(&out).await.is_err() || tcp.flush().await.is_err() {
-            return;
-        }
     }
 }
 
