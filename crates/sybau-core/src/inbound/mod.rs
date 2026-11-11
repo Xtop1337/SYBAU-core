@@ -9,6 +9,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use sybau_common::net::InterfaceIndex;
 use sybau_config::{InboundConfig, InboundKind};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
@@ -25,7 +26,13 @@ pub enum BoundInbound {
 impl BoundInbound {
     /// Binds the listening sockets so that address conflicts are reported
     /// before the engine reports a successful start.
-    pub async fn bind(index: usize, cfg: &InboundConfig) -> Result<Self> {
+    /// `uplink` is the interface pinning of the core's sockets, which a
+    /// TUN inbound keeps pointing at the current uplink (Windows).
+    pub async fn bind(
+        index: usize,
+        cfg: &InboundConfig,
+        uplink: Option<Arc<InterfaceIndex>>,
+    ) -> Result<Self> {
         let tag: Arc<str> = if cfg.tag.is_empty() {
             Arc::from(format!("{}-{}", cfg.kind.type_name(), index))
         } else {
@@ -51,9 +58,10 @@ impl BoundInbound {
                 // Creating the interface and routes blocks on system calls
                 // and `ip`/`nft` runs.
                 let c = (**c).clone();
-                let tun = tokio::task::spawn_blocking(move || tun::TunInbound::open(tag, &c))
-                    .await
-                    .context("TUN setup panicked")??;
+                let tun =
+                    tokio::task::spawn_blocking(move || tun::TunInbound::open(tag, &c, uplink))
+                        .await
+                        .context("TUN setup panicked")??;
                 Ok(BoundInbound::Tun(Box::new(tun)))
             }
         }

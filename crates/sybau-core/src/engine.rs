@@ -107,6 +107,8 @@ struct Prepared {
     router: crate::route::Router,
     dns: Option<Arc<crate::dns::DnsResolver>>,
     bypass: Arc<dyn sybau_common::Outbound>,
+    /// Uplink pinning shared by every socket (Windows TUN).
+    uplink: Option<Arc<sybau_common::net::InterfaceIndex>>,
 }
 
 impl Engine {
@@ -143,11 +145,19 @@ impl Engine {
             protect: self.inner.opts.protect.clone(),
             ..Default::default()
         };
-        if let Some(t) = tun {
+        if let Some(t) = tun.filter(|t| t.auto_route && t.file_descriptor.is_none()) {
             // Marked sockets keep using the main routing table (Linux
             // policy routing installed by the TUN inbound).
-            if cfg!(target_os = "linux") && t.auto_route && t.file_descriptor.is_none() {
+            if cfg!(target_os = "linux") {
                 socket.fwmark = Some(t.fwmark);
+            }
+            // Windows: pinned to the uplink interface, which the TUN
+            // inbound keeps up to date.
+            if cfg!(windows) {
+                let index = Arc::new(sybau_common::net::InterfaceIndex::default());
+                let (v4, v6) = sybau_tun::uplink_interfaces(0);
+                index.set(v4, v6);
+                socket.bind_interface_index = Some(index);
             }
         }
         socket
@@ -214,6 +224,7 @@ impl Engine {
             }
             None => None,
         };
+        let uplink = socket.bind_interface_index.clone();
         let bypass = crate::outbound::internal_direct(late, socket);
         Ok(Prepared {
             config,
@@ -221,6 +232,7 @@ impl Engine {
             router,
             dns,
             bypass,
+            uplink,
         })
     }
 
@@ -231,10 +243,11 @@ impl Engine {
             router,
             dns,
             bypass,
+            uplink,
         } = prepared;
         let mut bound = Vec::with_capacity(config.inbounds.len());
         for (i, ib) in config.inbounds.iter().enumerate() {
-            bound.push(BoundInbound::bind(i, ib).await?);
+            bound.push(BoundInbound::bind(i, ib, uplink.clone()).await?);
         }
         logging::set_level(&config.log.level);
         let rules = router.rule_count();

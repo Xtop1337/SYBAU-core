@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use sybau_common::net::InterfaceIndex;
 use sybau_common::{io_err, Network, PacketConn, Session, SniffOptions, Target};
 use sybau_config::TunInbound as TunConfig;
 use sybau_dns::message::Message;
@@ -33,10 +34,39 @@ pub struct TunInbound {
     routes: Option<Routes>,
     /// Interface networks; flows towards them would loop.
     own_nets: Vec<(IpAddr, u8)>,
+    uplink: Option<Arc<InterfaceIndex>>,
+}
+
+/// The first usable address of `net` other than `own` (the peer of a
+/// point-to-point TUN network), announced as its DNS server on Windows.
+fn peer_address(own: IpAddr, prefix: u8) -> Option<IpAddr> {
+    match own {
+        IpAddr::V4(v4) if prefix <= 30 => {
+            let mask = u32::MAX.checked_shl(32 - u32::from(prefix)).unwrap_or(0);
+            let net = u32::from(v4) & mask;
+            (1..4)
+                .map(|i| std::net::Ipv4Addr::from(net + i))
+                .find(|a| *a != v4)
+                .map(IpAddr::V4)
+        }
+        IpAddr::V6(v6) if prefix <= 126 => {
+            let mask = u128::MAX.checked_shl(128 - u32::from(prefix)).unwrap_or(0);
+            let net = u128::from(v6) & mask;
+            (1..4)
+                .map(|i| std::net::Ipv6Addr::from(net + i))
+                .find(|a| *a != v6)
+                .map(IpAddr::V6)
+        }
+        _ => None,
+    }
 }
 
 impl TunInbound {
-    pub fn open(tag: Arc<str>, cfg: &TunConfig) -> Result<Self> {
+    pub fn open(
+        tag: Arc<str>,
+        cfg: &TunConfig,
+        uplink: Option<Arc<InterfaceIndex>>,
+    ) -> Result<Self> {
         if matches!(cfg.stack.as_str(), "system" | "mixed") {
             warn!(target: "sybau::inbound", "inbound `{tag}`: stack `{}` is not available yet, using `userspace`", cfg.stack);
         }
@@ -63,11 +93,17 @@ impl TunInbound {
                 IpAddr::V4(v4) => opts.ipv4 = Some((v4, prefix)),
                 IpAddr::V6(v6) => opts.ipv6 = Some((v6, prefix)),
             }
+            // Windows resolves through the DNS servers of its interfaces;
+            // one inside the TUN network brings its queries to the hijack.
+            if cfg.dns_hijack {
+                opts.dns_servers.extend(peer_address(ip, prefix));
+            }
         }
         let tun = Tun::open(&opts).with_context(|| format!("inbound `{tag}`"))?;
         let routes = if cfg.auto_route && cfg.file_descriptor.is_none() {
             let ro = RouteOptions {
                 interface: tun.name().to_string(),
+                interface_index: tun.index(),
                 addresses: cfg.address.clone(),
                 route_address: cfg.route_address.clone(),
                 route_exclude_address: cfg.route_exclude_address.clone(),
@@ -91,6 +127,7 @@ impl TunInbound {
             tun,
             routes,
             own_nets,
+            uplink,
         })
     }
 
@@ -106,7 +143,16 @@ impl TunInbound {
             tun,
             routes,
             own_nets,
+            uplink,
         } = self;
+        if let Some(uplink) = uplink {
+            tokio::spawn(follow_uplink(
+                tag.clone(),
+                tun.index(),
+                uplink,
+                cancel.clone(),
+            ));
+        }
         info!(target: "sybau::inbound", "inbound `{tag}`: TUN `{}` up ({}, mtu {}{})", tun.name(), cfg.address.join(", "), cfg.mtu, if routes.is_some() { ", auto_route" } else { "" });
         let udp_timeout = cfg
             .udp_timeout
@@ -154,6 +200,29 @@ impl TunInbound {
             routes.shutdown(keep_kill_switch.load(Ordering::SeqCst));
         }
         info!(target: "sybau::inbound", "inbound `{}`: TUN closed", ctx.tag);
+    }
+}
+
+/// Keeps the core's sockets pinned to the current uplink when the
+/// network changes (Wi-Fi to cable, VPN of another program, ...).
+async fn follow_uplink(
+    tag: Arc<str>,
+    tun_index: u32,
+    uplink: Arc<InterfaceIndex>,
+    cancel: CancellationToken,
+) {
+    let mut tick = tokio::time::interval(Duration::from_secs(2));
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {}
+            _ = cancel.cancelled() => return,
+        }
+        let (v4, v6) = tokio::task::spawn_blocking(move || sybau_tun::uplink_interfaces(tun_index))
+            .await
+            .unwrap_or((0, 0));
+        if uplink.set(v4, v6) {
+            info!(target: "sybau::inbound", "inbound `{tag}`: uplink interface is now {v4} (IPv4), {v6} (IPv6)");
+        }
     }
 }
 
@@ -389,6 +458,21 @@ mod tests {
         assert!(unroutable("224.0.0.251".parse().unwrap()));
         assert!(unroutable("255.255.255.255".parse().unwrap()));
         assert!(!unroutable("8.8.8.8".parse().unwrap()));
+    }
+
+    #[test]
+    fn peer_addresses() {
+        let peer = |c: &str| {
+            let (ip, p) = sybau_config::parse_cidr(c).unwrap();
+            peer_address(ip, p).map(|a| a.to_string())
+        };
+        assert_eq!(peer("172.19.0.1/30").as_deref(), Some("172.19.0.2"));
+        assert_eq!(peer("10.0.0.2/24").as_deref(), Some("10.0.0.1"));
+        assert_eq!(
+            peer("fdfe:dcba:9876::1/126").as_deref(),
+            Some("fdfe:dcba:9876::2")
+        );
+        assert_eq!(peer("10.0.0.1/32"), None);
     }
 
     #[test]

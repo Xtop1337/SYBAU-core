@@ -1,12 +1,19 @@
 //! System routes that send traffic into the TUN interface, and the kill
-//! switch. Linux uses policy routing: the core's own sockets carry a
-//! firewall mark and keep using the main table.
+//! switch.
+//!
+//! Linux uses policy routing: the core's own sockets carry a firewall
+//! mark and keep using the main table. Windows gets `0.0.0.0/1` and
+//! `128.0.0.0/1` (and the IPv6 halves) on the TUN, narrower than the
+//! default route; the core's own sockets are pinned to the uplink
+//! interface instead.
 
 use anyhow::Result;
 
 #[derive(Clone, Debug, Default)]
 pub struct RouteOptions {
     pub interface: String,
+    /// Interface index of the TUN (Windows).
+    pub interface_index: u32,
     /// Addresses on the interface (`172.19.0.1/30`).
     pub addresses: Vec<String>,
     /// Only these destinations go to the TUN; empty means everything.
@@ -31,22 +38,35 @@ pub struct RouteOptions {
 /// dropped; the kill switch is removed only by a clean shutdown, so that
 /// a crash or a panic keeps traffic blocked.
 pub struct Routes {
-    opts: Option<RouteOptions>,
+    opts: RouteOptions,
+    #[cfg(windows)]
+    added: Vec<crate::windows::Route>,
+    active: bool,
 }
 
 impl Routes {
     pub fn install(opts: &RouteOptions) -> Result<Self> {
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = opts;
-            anyhow::bail!("auto_route is not implemented on this platform yet");
-        }
         #[cfg(target_os = "linux")]
         {
             linux::install(opts)?;
             Ok(Self {
-                opts: Some(opts.clone()),
+                opts: opts.clone(),
+                active: true,
             })
+        }
+        #[cfg(windows)]
+        {
+            let added = win::install(opts)?;
+            Ok(Self {
+                opts: opts.clone(),
+                added,
+                active: true,
+            })
+        }
+        #[cfg(not(any(target_os = "linux", windows)))]
+        {
+            let _ = opts;
+            anyhow::bail!("auto_route is not implemented on this platform");
         }
     }
 
@@ -54,27 +74,34 @@ impl Routes {
     /// next configuration replaces the kill switch atomically (or removes
     /// it), so no traffic slips out in between.
     pub fn shutdown(mut self, keep_kill_switch: bool) {
-        if let Some(opts) = self.opts.take() {
-            remove(&opts, !keep_kill_switch);
+        self.remove(!keep_kill_switch);
+    }
+
+    fn remove(&mut self, kill_switch: bool) {
+        if !std::mem::take(&mut self.active) {
+            return;
         }
+        #[cfg(target_os = "linux")]
+        linux::cleanup(self.opts.table, kill_switch);
+        #[cfg(windows)]
+        {
+            for route in self.added.drain(..) {
+                crate::windows::delete_route(&route);
+            }
+        }
+        let _ = kill_switch;
     }
 }
 
 impl Drop for Routes {
     fn drop(&mut self) {
-        if let Some(opts) = self.opts.take() {
-            remove(&opts, false);
-            if opts.kill_switch {
+        if self.active {
+            self.remove(false);
+            if self.opts.kill_switch {
                 tracing::warn!(target: "sybau::tun", "routes removed; the kill switch stays until a clean exit or `sybau tun-cleanup`");
             }
         }
     }
-}
-
-fn remove(opts: &RouteOptions, kill_switch: bool) {
-    #[cfg(target_os = "linux")]
-    linux::cleanup(opts.table, kill_switch);
-    let _ = (opts, kill_switch);
 }
 
 /// Removes routes, rules and the kill switch left by a crashed run.
@@ -82,6 +109,90 @@ pub fn cleanup(table: u32) {
     #[cfg(target_os = "linux")]
     linux::cleanup(table, true);
     let _ = table;
+}
+
+/// Splits `a.b.c.d/n` into the address and prefix length.
+pub fn parse_cidr(text: &str) -> Result<(std::net::IpAddr, u8)> {
+    let (a, p) = text
+        .split_once('/')
+        .ok_or_else(|| anyhow::anyhow!("`{text}` is not in address/prefix form"))?;
+    let ip: std::net::IpAddr = a
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("bad address in `{text}`"))?;
+    let max = if ip.is_ipv4() { 32 } else { 128 };
+    let prefix: u8 = p
+        .trim()
+        .parse()
+        .ok()
+        .filter(|p| *p <= max)
+        .ok_or_else(|| anyhow::anyhow!("bad prefix in `{text}`"))?;
+    Ok((ip, prefix))
+}
+
+#[cfg(windows)]
+mod win {
+    use std::net::IpAddr;
+
+    use anyhow::{Context, Result};
+    use tracing::{info, warn};
+
+    use super::{parse_cidr, RouteOptions};
+    use crate::windows::{add_route, default_route, Route};
+
+    pub fn install(o: &RouteOptions) -> Result<Vec<Route>> {
+        if !o.include_uid.is_empty() || !o.exclude_uid.is_empty() {
+            warn!(target: "sybau::tun", "include_uid / exclude_uid only work on Linux; use include_process / exclude_process");
+        }
+        let has_v6 = o.addresses.iter().any(|a| a.contains(':'));
+        let mut wanted: Vec<String> = if o.route_address.is_empty() {
+            let mut v = vec!["0.0.0.0/1".to_string(), "128.0.0.0/1".to_string()];
+            if has_v6 {
+                v.extend(["::/1".to_string(), "8000::/1".to_string()]);
+            }
+            v
+        } else {
+            o.route_address.clone()
+        };
+        wanted.retain(|c| has_v6 || !c.contains(':'));
+        let mut added = Vec::new();
+        let result = (|| -> Result<()> {
+            for cidr in &wanted {
+                let (ip, len) = parse_cidr(cidr)?;
+                if let Some(r) = add_route(ip, len, o.interface_index, None, 0)
+                    .with_context(|| format!("route {cidr} via the TUN"))?
+                {
+                    added.push(r);
+                }
+            }
+            for cidr in &o.route_exclude_address {
+                let (ip, len) = parse_cidr(cidr)?;
+                let Some(uplink) = default_route(ip.is_ipv6(), o.interface_index) else {
+                    warn!(target: "sybau::tun", "route_exclude_address {cidr}: no default route outside the TUN");
+                    continue;
+                };
+                let hop = (!uplink.next_hop.is_unspecified()).then_some(uplink.next_hop);
+                if let Some(r) = add_route(ip, len, uplink.index, hop, 0)
+                    .with_context(|| format!("route {cidr} outside the TUN"))?
+                {
+                    added.push(r);
+                }
+            }
+            Ok(())
+        })();
+        if let Err(e) = result {
+            for r in &added {
+                crate::windows::delete_route(r);
+            }
+            return Err(e);
+        }
+        let uplink: Option<IpAddr> = default_route(false, o.interface_index).map(|r| r.next_hop);
+        info!(target: "sybau::tun", "routes through `{}` installed ({}; uplink gateway {})", o.interface, wanted.join(", "), uplink.map_or("none".into(), |g| g.to_string()));
+        if o.kill_switch {
+            warn!(target: "sybau::tun", "kill_switch is not available on Windows yet");
+        }
+        Ok(added)
+    }
 }
 
 #[cfg(target_os = "linux")]

@@ -50,6 +50,25 @@ pub struct SocketOpts {
     pub fwmark: Option<u32>,
     pub protect: Option<ProtectFn>,
     pub connect_timeout: Option<Duration>,
+    /// Windows: send through this interface whatever the routing table
+    /// says (`IP_UNICAST_IF`), so the core's own traffic bypasses a TUN
+    /// that holds the default route. Updated when the network changes.
+    pub bind_interface_index: Option<Arc<InterfaceIndex>>,
+}
+
+/// Interface indexes to send IPv4 and IPv6 traffic through; 0 = unset.
+#[derive(Debug, Default)]
+pub struct InterfaceIndex {
+    pub v4: std::sync::atomic::AtomicU32,
+    pub v6: std::sync::atomic::AtomicU32,
+}
+
+impl InterfaceIndex {
+    pub fn set(&self, v4: u32, v6: u32) -> bool {
+        use std::sync::atomic::Ordering::Relaxed;
+        let changed = self.v4.swap(v4, Relaxed) != v4;
+        self.v6.swap(v6, Relaxed) != v6 || changed
+    }
 }
 
 impl SocketOpts {
@@ -60,6 +79,9 @@ impl SocketOpts {
             fwmark: self.fwmark.or(base.fwmark),
             protect: self.protect.or_else(|| base.protect.clone()),
             connect_timeout: self.connect_timeout.or(base.connect_timeout),
+            bind_interface_index: self
+                .bind_interface_index
+                .or_else(|| base.bind_interface_index.clone()),
         }
     }
 
@@ -72,6 +94,10 @@ impl SocketOpts {
             if let Some(iface) = &self.bind_interface {
                 sock.bind_device(Some(iface.as_bytes()))?;
             }
+        }
+        #[cfg(windows)]
+        if let Some(index) = &self.bind_interface_index {
+            unicast_if(&sock, index)?;
         }
         if let Some(protect) = &self.protect {
             #[cfg(unix)]
@@ -94,6 +120,57 @@ impl SocketOpts {
         let _ = &sock;
         Ok(())
     }
+}
+
+/// Pins a socket to the interfaces in `index` (Windows `IP_UNICAST_IF`
+/// and `IPV6_UNICAST_IF`). A dual-stack IPv6 socket gets both.
+#[cfg(windows)]
+fn unicast_if(sock: &SockRef<'_>, index: &InterfaceIndex) -> io::Result<()> {
+    use std::os::windows::io::AsRawSocket;
+    use std::sync::atomic::Ordering::Relaxed;
+    use windows_sys::Win32::Networking::WinSock::{
+        setsockopt, IPPROTO_IP, IPPROTO_IPV6, IPV6_UNICAST_IF, IP_UNICAST_IF,
+    };
+    let raw = sock.as_raw_socket() as usize;
+    let set = |level: i32, name: i32, value: u32| -> bool {
+        // SAFETY: `raw` is a live socket and `value` outlives the call.
+        unsafe {
+            setsockopt(
+                raw,
+                level,
+                name,
+                (&value as *const u32).cast(),
+                std::mem::size_of::<u32>() as i32,
+            ) == 0
+        }
+    };
+    let (v4, v6) = (index.v4.load(Relaxed), index.v6.load(Relaxed));
+    // Without an uplink an unpinned socket would follow the TUN's routes
+    // back into the core: refuse instead of looping.
+    let no_uplink = || {
+        io_err(
+            io::ErrorKind::NetworkUnreachable,
+            "no network outside the TUN",
+        )
+    };
+    // IPv6 sockets take the index as is, IPv4 in network byte order.
+    if set(IPPROTO_IPV6, IPV6_UNICAST_IF, v6) {
+        // A dual-stack socket also sends IPv4; UdpConn checks per datagram.
+        if v4 != 0 {
+            set(IPPROTO_IP, IP_UNICAST_IF, v4.to_be());
+        }
+        if v4 == 0 && v6 == 0 {
+            return Err(no_uplink());
+        }
+        return Ok(());
+    }
+    if v4 == 0 {
+        return Err(no_uplink());
+    }
+    if !set(IPPROTO_IP, IP_UNICAST_IF, v4.to_be()) {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// Opens outgoing connections: either straight to the network
@@ -191,6 +268,8 @@ impl Dialer for SystemDialer {
 pub struct UdpConn {
     sock: UdpSocket,
     dual_stack: bool,
+    /// Uplink pinning (Windows); a family without an uplink is refused.
+    binding: Option<Arc<InterfaceIndex>>,
     resolver: Arc<dyn Resolver>,
     resolved: Mutex<HashMap<String, IpAddr>>,
 }
@@ -210,6 +289,7 @@ impl UdpConn {
         Ok(Self {
             sock: UdpSocket::from_std(sock.into())?,
             dual_stack,
+            binding: opts.bind_interface_index.clone(),
             resolver,
             resolved: Mutex::new(HashMap::new()),
         })
@@ -263,6 +343,20 @@ impl UdpConn {
 impl PacketConn for UdpConn {
     async fn send_to(&self, buf: &[u8], dst: &Target) -> io::Result<usize> {
         let addr = self.destination(dst).await?;
+        if let Some(b) = &self.binding {
+            use std::sync::atomic::Ordering::Relaxed;
+            let v4 = match addr.ip() {
+                IpAddr::V4(_) => true,
+                IpAddr::V6(v6) => v6.to_ipv4_mapped().is_some(),
+            };
+            let index = if v4 { &b.v4 } else { &b.v6 };
+            if cfg!(windows) && index.load(Relaxed) == 0 {
+                return Err(io_err(
+                    io::ErrorKind::NetworkUnreachable,
+                    "no network outside the TUN",
+                ));
+            }
+        }
         self.sock.send_to(buf, addr).await
     }
 

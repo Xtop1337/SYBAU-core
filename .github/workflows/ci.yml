@@ -69,10 +69,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
+      - name: Official Wintun build (SHA-256 checked), embedded into sybau.exe
+        shell: pwsh
+        run: tests/windows/fetch-wintun.ps1 -Arch amd64
       - run: cargo build --release -p sybau
       - name: Windows smoke test (metadata, single instance, named pipe, proxying)
         shell: pwsh
         run: tests/windows/smoke.ps1 -Exe target\release\sybau.exe
+      - name: Windows TUN test (Wintun, routes, uplink pinning, DNS hijack, process rules)
+        shell: pwsh
+        run: tests/windows/tun.ps1 -Exe target\release\sybau.exe
 
   build:
     name: build ${{ matrix.target }}
@@ -93,7 +99,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - name: Official Wintun build (SHA-256 checked), embedded into the Windows binaries
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          tests/windows/fetch-wintun.ps1 -Arch $(if ("${{ matrix.target }}" -like "aarch64-*") { "arm64" } else { "amd64" })
       - run: cargo build --release --target ${{ matrix.target }} -p sybau -p sybau-ffi
+      - name: Wintun license next to the binaries
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item $env:SYBAU_WINTUN_LICENSE target/${{ matrix.target }}/release/wintun-LICENSE.txt
       - uses: actions/upload-artifact@v4
         with:
           name: sybau-${{ matrix.target }}
@@ -103,6 +118,7 @@ jobs:
             target/${{ matrix.target }}/release/sybau.exe
             target/${{ matrix.target }}/release/sybaucore.dll
             target/${{ matrix.target }}/release/libsybaucore.so
+            target/${{ matrix.target }}/release/wintun-LICENSE.txt
             include/sybau.h
 
   build-android:

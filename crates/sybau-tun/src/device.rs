@@ -22,6 +22,9 @@ pub struct TunOptions {
     pub fd: Option<i32>,
     /// Path of `wintun.dll` (Windows).
     pub wintun_file: Option<String>,
+    /// DNS servers announced on the interface (Windows), so the system
+    /// resolver sends its queries into the TUN.
+    pub dns_servers: Vec<std::net::IpAddr>,
 }
 
 pub struct Tun {
@@ -61,13 +64,33 @@ impl Tun {
                     builder = builder.ipv6(ip, prefix);
                 }
                 #[cfg(windows)]
-                if let Some(path) = &opts.wintun_file {
-                    builder = builder.wintun_file(path.clone());
+                {
+                    builder = builder
+                        .wintun_file(wintun_path(opts.wintun_file.as_deref())?)
+                        .description("SYBAU-CORE Tunnel")
+                        // Preferred over the uplink, also for DNS.
+                        .metric(1);
                 }
                 builder.build_async().with_context(|| format!("cannot create the TUN interface `{}` (root or administrator rights are needed)", opts.name))?
             }
         };
         let name = device.name().unwrap_or_else(|_| opts.name.clone());
+        #[cfg(windows)]
+        {
+            for family in [false, true] {
+                let servers: Vec<std::net::IpAddr> = opts
+                    .dns_servers
+                    .iter()
+                    .copied()
+                    .filter(|ip| ip.is_ipv6() == family)
+                    .collect();
+                if !servers.is_empty() {
+                    if let Err(e) = device.set_dns_servers(&servers) {
+                        tracing::warn!(target: "sybau::tun", "cannot set DNS servers on the TUN: {e}");
+                    }
+                }
+            }
+        }
         Ok(Self {
             device: Arc::new(device),
             name,
@@ -79,6 +102,18 @@ impl Tun {
         &self.name
     }
 
+    /// Interface index (0 if unknown).
+    pub fn index(&self) -> u32 {
+        #[cfg(windows)]
+        {
+            self.device.if_index().unwrap_or(0)
+        }
+        #[cfg(not(windows))]
+        {
+            0
+        }
+    }
+
     /// Starts the userspace TCP/IP stack on this interface.
     pub fn into_stack(self, udp_timeout: std::time::Duration) -> ipstack::IpStack {
         let mut config = ipstack::IpStackConfig::default();
@@ -86,6 +121,35 @@ impl Tun {
         config.udp_timeout(udp_timeout);
         ipstack::IpStack::new(config, PacketIo::new(self.device))
     }
+}
+
+/// Where `wintun.dll` is loaded from: the configured path, the file next
+/// to the executable, or the copy built into it, written next to the
+/// executable. Whoever can replace files there can replace the executable
+/// itself, so this opens no new way to plant a DLL.
+#[cfg(windows)]
+fn wintun_path(configured: Option<&str>) -> Result<String> {
+    if let Some(p) = configured {
+        return Ok(p.to_string());
+    }
+    let exe = std::env::current_exe().context("cannot locate the executable")?;
+    let dir = exe.parent().context("executable without a directory")?;
+    let path = dir.join("wintun.dll");
+    if path.exists() {
+        return Ok(path.to_string_lossy().into_owned());
+    }
+    #[cfg(sybau_wintun_embedded)]
+    {
+        static DLL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/wintun.dll"));
+        std::fs::write(&path, DLL).with_context(|| format!("cannot write {}", path.display()))?;
+        tracing::info!(target: "sybau::tun", "wrote the built-in wintun.dll to {}", path.display());
+        Ok(path.to_string_lossy().into_owned())
+    }
+    #[cfg(not(sybau_wintun_embedded))]
+    anyhow::bail!(
+        "wintun.dll not found next to {}: download it from https://www.wintun.net or set `wintun_file`",
+        exe.display()
+    )
 }
 
 /// One packet per read and per write, as the stack expects.

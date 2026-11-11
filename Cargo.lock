@@ -1917,6 +1917,7 @@ dependencies = [
  "socket2 0.5.10",
  "tokio",
  "tracing",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1983,6 +1984,7 @@ dependencies = [
  "sybau-transport",
  "tokio",
  "tracing",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

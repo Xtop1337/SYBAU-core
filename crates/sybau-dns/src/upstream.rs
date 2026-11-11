@@ -438,10 +438,93 @@ pub fn system_nameservers() -> Vec<std::net::SocketAddr> {
         }
         Vec::new()
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        windows_nameservers()
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         Vec::new()
     }
+}
+
+/// DNS servers of the adapters that have a default gateway (the uplinks;
+/// the TUN itself has none).
+#[cfg(windows)]
+fn windows_nameservers() -> Vec<std::net::SocketAddr> {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+    use windows_sys::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, NO_ERROR};
+    use windows_sys::Win32::NetworkManagement::IpHelper::{
+        GetAdaptersAddresses, GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_SKIP_ANYCAST,
+        GAA_FLAG_SKIP_MULTICAST, IP_ADAPTER_ADDRESSES_LH,
+    };
+    use windows_sys::Win32::NetworkManagement::Ndis::IfOperStatusUp;
+    use windows_sys::Win32::Networking::WinSock::{
+        AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_IN, SOCKADDR_IN6,
+    };
+
+    let flags = GAA_FLAG_INCLUDE_GATEWAYS | GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST;
+    let mut size: u32 = 16 * 1024;
+    let mut buf: Vec<u64> = Vec::new();
+    for _ in 0..4 {
+        buf = vec![0u64; (size as usize).div_ceil(8)];
+        // SAFETY: `buf` is `size` bytes, aligned for the adapter records.
+        let code = unsafe {
+            GetAdaptersAddresses(
+                AF_UNSPEC as u32,
+                flags,
+                std::ptr::null(),
+                buf.as_mut_ptr().cast(),
+                &mut size,
+            )
+        };
+        match code {
+            NO_ERROR => break,
+            ERROR_BUFFER_OVERFLOW => continue,
+            _ => return Vec::new(),
+        }
+    }
+    let mut out = Vec::new();
+    let mut adapter = buf.as_ptr() as *const IP_ADAPTER_ADDRESSES_LH;
+    // SAFETY: the API filled `buf` with a linked list of adapter records
+    // whose pointers stay inside it.
+    unsafe {
+        while !adapter.is_null() {
+            let a = &*adapter;
+            if a.OperStatus == IfOperStatusUp && !a.FirstGatewayAddress.is_null() {
+                let mut dns = a.FirstDnsServerAddress;
+                while !dns.is_null() {
+                    let sa = (*dns).Address.lpSockaddr;
+                    let ip = match (*sa).sa_family {
+                        AF_INET => {
+                            let v4 = &*(sa as *const SOCKADDR_IN);
+                            Some(IpAddr::V4(Ipv4Addr::from(
+                                v4.sin_addr.S_un.S_addr.to_ne_bytes(),
+                            )))
+                        }
+                        AF_INET6 => {
+                            let v6 = &*(sa as *const SOCKADDR_IN6);
+                            Some(IpAddr::V6(Ipv6Addr::from(v6.sin6_addr.u.Byte)))
+                        }
+                        _ => None,
+                    };
+                    // fec0:0:0:ffff::1-3 are Windows placeholders, not servers.
+                    if let Some(ip) = ip.filter(|ip| match ip {
+                        IpAddr::V6(v6) => v6.segments()[..4] != [0xfec0, 0, 0, 0xffff],
+                        IpAddr::V4(_) => true,
+                    }) {
+                        let addr = SocketAddr::new(ip, 53);
+                        if !out.contains(&addr) {
+                            out.push(addr);
+                        }
+                    }
+                    dns = (*dns).Next;
+                }
+            }
+            adapter = a.Next;
+        }
+    }
+    out
 }
 
 /// `nameserver` lines of a resolv.conf.
