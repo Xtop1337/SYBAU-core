@@ -43,7 +43,7 @@ pub fn proxy_server(cfg: &Config, sp: &SystemProxyConfig) -> Option<String> {
                 format!("{host}:{}", c.port)
             })
         }
-        InboundKind::Socks(_) => None,
+        InboundKind::Socks(_) | InboundKind::Tun(_) => None,
     })
 }
 

@@ -80,6 +80,20 @@ impl Config {
                 bail!("duplicate inbound tag `{}`", ib.tag);
             }
         }
+        let tuns: Vec<&TunInbound> = self
+            .inbounds
+            .iter()
+            .filter_map(|ib| match &ib.kind {
+                InboundKind::Tun(t) => Some(&**t),
+                _ => None,
+            })
+            .collect();
+        if tuns.len() > 1 {
+            bail!("only one tun inbound is allowed");
+        }
+        if let Some(t) = tuns.first() {
+            validate_tun(t)?;
+        }
         if let Some(f) = &self.route.r#final {
             if !tags.contains(f.as_str()) {
                 bail!("route.final `{f}` does not exist");
@@ -201,6 +215,64 @@ pub fn strip_json_comments(input: &str) -> String {
         }
     }
     out
+}
+
+fn validate_tun(t: &TunInbound) -> Result<()> {
+    if t.interface_name.is_empty() || (t.interface_name.len() > 15 && !cfg!(windows)) {
+        bail!("tun: interface_name must be 1-15 characters");
+    }
+    if t.address.is_empty() && t.file_descriptor.is_none() {
+        bail!("tun: `address` is empty");
+    }
+    for cidr in t
+        .address
+        .iter()
+        .chain(&t.route_address)
+        .chain(&t.route_exclude_address)
+    {
+        parse_cidr(cidr).map_err(|e| anyhow::anyhow!("tun: {e}"))?;
+    }
+    if t.address.iter().filter(|a| !a.contains(':')).count() > 1
+        || t.address.iter().filter(|a| a.contains(':')).count() > 1
+    {
+        bail!("tun: at most one IPv4 and one IPv6 address");
+    }
+    // `gvisor` is sing-box's name for a userspace stack.
+    if !matches!(
+        t.stack.as_str(),
+        "userspace" | "system" | "mixed" | "gvisor"
+    ) {
+        bail!("tun: stack must be `userspace`, `system` or `mixed`");
+    }
+    if t.mtu < 1280 && t.address.iter().any(|a| a.contains(':')) {
+        bail!("tun: IPv6 needs an mtu of at least 1280");
+    }
+    if t.mtu < 576 {
+        bail!("tun: mtu {} is too small", t.mtu);
+    }
+    if let Some(d) = &t.udp_timeout {
+        route::parse_duration(d).map_err(|e| anyhow::anyhow!("tun: udp_timeout: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Parses `172.19.0.1/30` into the address and prefix length.
+pub fn parse_cidr(text: &str) -> Result<(std::net::IpAddr, u8)> {
+    let (a, p) = text
+        .split_once('/')
+        .ok_or_else(|| anyhow::anyhow!("`{text}` is not in address/prefix form"))?;
+    let ip: std::net::IpAddr = a
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("bad address in `{text}`"))?;
+    let max = if ip.is_ipv4() { 32 } else { 128 };
+    let prefix: u8 = p
+        .trim()
+        .parse()
+        .ok()
+        .filter(|p| *p <= max)
+        .ok_or_else(|| anyhow::anyhow!("bad prefix in `{text}`"))?;
+    Ok((ip, prefix))
 }
 
 #[cfg(test)]

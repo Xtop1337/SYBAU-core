@@ -3,7 +3,9 @@
 pub mod http;
 pub mod local;
 pub mod socks;
+pub mod tun;
 
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -17,6 +19,7 @@ use crate::dispatch::Dispatcher;
 /// An inbound whose sockets are already bound; `spawn` starts serving.
 pub enum BoundInbound {
     Local(local::LocalProxy, TcpListener),
+    Tun(Box<tun::TunInbound>),
 }
 
 impl BoundInbound {
@@ -33,7 +36,7 @@ impl BoundInbound {
                 let mode = match &cfg.kind {
                     InboundKind::Mixed(_) => local::Mode::Mixed,
                     InboundKind::Socks(_) => local::Mode::Socks,
-                    InboundKind::Http(_) => local::Mode::Http,
+                    _ => local::Mode::Http,
                 };
                 let addr = format!("{}:{}", bracket_v6(&c.listen), c.port);
                 let listener = TcpListener::bind(&addr)
@@ -44,14 +47,31 @@ impl BoundInbound {
                     listener,
                 ))
             }
+            InboundKind::Tun(c) => {
+                // Creating the interface and routes blocks on system calls
+                // and `ip`/`nft` runs.
+                let c = (**c).clone();
+                let tun = tokio::task::spawn_blocking(move || tun::TunInbound::open(tag, &c))
+                    .await
+                    .context("TUN setup panicked")??;
+                Ok(BoundInbound::Tun(Box::new(tun)))
+            }
         }
     }
 
-    pub fn spawn(self, dispatcher: Arc<Dispatcher>, cancel: CancellationToken) -> JoinHandle<()> {
+    /// `keep_kill_switch` is read when the inbound stops: set during a
+    /// reload so that a TUN kill switch stays in place.
+    pub fn spawn(
+        self,
+        dispatcher: Arc<Dispatcher>,
+        cancel: CancellationToken,
+        keep_kill_switch: Arc<AtomicBool>,
+    ) -> JoinHandle<()> {
         match self {
             BoundInbound::Local(proxy, listener) => {
                 tokio::spawn(Arc::new(proxy).serve(listener, dispatcher, cancel))
             }
+            BoundInbound::Tun(tun) => tokio::spawn(tun.serve(dispatcher, cancel, keep_kill_switch)),
         }
     }
 }

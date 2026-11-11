@@ -12,7 +12,6 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
-use sybau_common::net::ProtectFn;
 use sybau_common::{
     io_err, ArcPacketConn, BoxStream, Dialer, Outbound, OutboundDialer, Resolver, Session,
     SocketOpts, SystemDialer,
@@ -22,7 +21,9 @@ use sybau_config::{OutboundConfig, OutboundKind};
 /// Everything an outbound needs from its environment.
 pub struct BuildContext {
     pub resolver: Arc<dyn Resolver>,
-    pub protect: Option<ProtectFn>,
+    /// Applied to every socket that leaves the machine: the Android
+    /// `protect` hook and the TUN loop protection (mark, interface).
+    pub socket: SocketOpts,
     /// Selector choices to restore (kept across config reloads).
     pub selections: HashMap<String, String>,
 }
@@ -31,10 +32,7 @@ impl BuildContext {
     fn system_dialer(&self, opts: SocketOpts) -> Arc<dyn Dialer> {
         Arc::new(SystemDialer::new(
             self.resolver.clone(),
-            SocketOpts {
-                protect: self.protect.clone(),
-                ..opts
-            },
+            opts.or(&self.socket),
         ))
     }
 }
@@ -211,17 +209,8 @@ impl OutboundManager {
 }
 
 /// A `direct` outbound outside the configuration, for internal use.
-pub fn internal_direct(
-    resolver: Arc<dyn Resolver>,
-    protect: Option<ProtectFn>,
-) -> Arc<dyn Outbound> {
-    let dialer: Arc<dyn Dialer> = Arc::new(SystemDialer::new(
-        resolver,
-        SocketOpts {
-            protect,
-            ..Default::default()
-        },
-    ));
+pub fn internal_direct(resolver: Arc<dyn Resolver>, socket: SocketOpts) -> Arc<dyn Outbound> {
+    let dialer: Arc<dyn Dialer> = Arc::new(SystemDialer::new(resolver, socket));
     Arc::new(Direct {
         tag: Arc::from("direct"),
         dialer,

@@ -11,6 +11,7 @@ sybau-config.workspace = true
 sybau-proto.workspace = true
 sybau-route.workspace = true
 sybau-dns.workspace = true
+sybau-tun.workspace = true
 sybau-transport.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true

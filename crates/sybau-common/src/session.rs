@@ -49,6 +49,9 @@ pub struct Session {
     /// Executable name of that process.
     pub process_name: Option<Arc<str>>,
     pub sniff: SniffOptions,
+    /// Skip the routing rules and go out directly (programs excluded
+    /// from a TUN inbound).
+    pub bypass: bool,
     /// Members chosen by outbound groups while connecting, outermost
     /// first; written by the groups, read by the dispatcher.
     pub chain: Arc<parking_lot::Mutex<Vec<Arc<str>>>>,
@@ -75,6 +78,7 @@ impl Session {
             process_path: None,
             process_name: None,
             sniff: SniffOptions::default(),
+            bypass: false,
             chain: Default::default(),
         }
     }

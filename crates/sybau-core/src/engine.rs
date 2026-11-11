@@ -2,14 +2,15 @@
 //! control API.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Value};
 use sybau_common::net::ProtectFn;
-use sybau_common::SystemResolver;
-use sybau_config::{Config, DirectOutbound, OutboundConfig, OutboundKind};
+use sybau_common::{SocketOpts, SystemResolver};
+use sybau_config::{Config, DirectOutbound, InboundKind, OutboundConfig, OutboundKind};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -75,6 +76,9 @@ pub struct EngineOptions {
 struct Running {
     config: Config,
     cancel: CancellationToken,
+    /// Set before a reload deactivates this config: the TUN kill switch
+    /// is handed over to the next one instead of being lifted.
+    keep_kill_switch: Arc<AtomicBool>,
     tasks: Vec<JoinHandle<()>>,
     dispatcher: Arc<Dispatcher>,
 }
@@ -102,6 +106,7 @@ struct Prepared {
     outbounds: OutboundManager,
     router: crate::route::Router,
     dns: Option<Arc<crate::dns::DnsResolver>>,
+    bypass: Arc<dyn sybau_common::Outbound>,
 }
 
 impl Engine {
@@ -132,6 +137,22 @@ impl Engine {
         self.inner.stop.clone()
     }
 
+    /// Options for every socket that leaves the machine.
+    fn base_socket_opts(&self, tun: Option<&sybau_config::TunInbound>) -> SocketOpts {
+        let mut socket = SocketOpts {
+            protect: self.inner.opts.protect.clone(),
+            ..Default::default()
+        };
+        if let Some(t) = tun {
+            // Marked sockets keep using the main routing table (Linux
+            // policy routing installed by the TUN inbound).
+            if cfg!(target_os = "linux") && t.auto_route && t.file_descriptor.is_none() {
+                socket.fwmark = Some(t.fwmark);
+            }
+        }
+        socket
+    }
+
     /// Everything that can fail without side effects.
     fn prepare(&self, mut config: Config) -> Result<Prepared> {
         if config.outbounds.is_empty() {
@@ -148,11 +169,21 @@ impl Engine {
                 config.log.level
             );
         }
+        let tun = config.inbounds.iter().find_map(|ib| match &ib.kind {
+            InboundKind::Tun(t) => Some(t.as_ref().clone()),
+            _ => None,
+        });
+        let socket = self.base_socket_opts(tun.as_ref());
+        // Under a TUN the system resolver's own queries would come back
+        // through the TUN, so the DNS module always exists then.
+        if tun.is_some() && config.dns.is_none() {
+            config.dns = Some(crate::dns::default_config());
+        }
         // Outbounds resolve through the DNS module once it exists.
         let late = Arc::new(crate::dns::LateResolver::default());
         let ctx = BuildContext {
             resolver: late.clone(),
-            protect: self.inner.opts.protect.clone(),
+            socket: socket.clone(),
             selections: self.inner.selections.lock().clone(),
         };
         let outbounds = OutboundManager::build(&config.outbounds, &ctx)?;
@@ -173,7 +204,8 @@ impl Engine {
                         &assets,
                         &self.inner.geo,
                         &router.rule_sets,
-                        self.inner.opts.protect.clone(),
+                        socket.clone(),
+                        tun.is_some(),
                     )
                     .context("dns")?,
                 );
@@ -182,11 +214,13 @@ impl Engine {
             }
             None => None,
         };
+        let bypass = crate::outbound::internal_direct(late, socket);
         Ok(Prepared {
             config,
             outbounds,
             router,
             dns,
+            bypass,
         })
     }
 
@@ -196,6 +230,7 @@ impl Engine {
             outbounds,
             router,
             dns,
+            bypass,
         } = prepared;
         let mut bound = Vec::with_capacity(config.inbounds.len());
         for (i, ib) in config.inbounds.iter().enumerate() {
@@ -212,11 +247,13 @@ impl Engine {
                 None => Arc::new(SystemResolver),
             },
             dns,
+            bypass,
         });
         let cancel = CancellationToken::new();
+        let keep_kill_switch = Arc::new(AtomicBool::new(false));
         let tasks = bound
             .into_iter()
-            .map(|b| b.spawn(dispatcher.clone(), cancel.clone()))
+            .map(|b| b.spawn(dispatcher.clone(), cancel.clone(), keep_kill_switch.clone()))
             .collect();
         info!(
             target: "sybau::core",
@@ -226,6 +263,7 @@ impl Engine {
         Ok(Running {
             config,
             cancel,
+            keep_kill_switch,
             tasks,
             dispatcher,
         })
@@ -256,6 +294,7 @@ impl Engine {
         let old_config = match guard.take() {
             Some(old) => {
                 let cfg = old.config.clone();
+                old.keep_kill_switch.store(true, Ordering::SeqCst);
                 self.deactivate(old).await;
                 Some(cfg)
             }

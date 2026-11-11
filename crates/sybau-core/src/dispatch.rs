@@ -34,6 +34,8 @@ pub struct Dispatcher {
     pub router: Router,
     pub resolver: Arc<dyn Resolver>,
     pub dns: Option<Arc<crate::dns::DnsResolver>>,
+    /// Direct path for sessions that skip the rules (`Session::bypass`).
+    pub bypass: Arc<dyn Outbound>,
 }
 
 /// The outbound picked for a session.
@@ -86,7 +88,7 @@ impl Dispatcher {
 
     /// Process lookup for rules that ask for it.
     async fn resolve_process(&self, sess: &mut Session) {
-        if !self.router.needs_process {
+        if !self.router.needs_process || sess.process_path.is_some() {
             return;
         }
         let Some(source) = sess.source else { return };
@@ -112,6 +114,13 @@ impl Dispatcher {
     }
 
     async fn route(&self, sess: &Session) -> Route {
+        if sess.bypass {
+            return Route::Outbound(
+                Arc::from("direct"),
+                self.bypass.clone(),
+                "bypass".to_string(),
+            );
+        }
         let target_domain = sess.target.domain().map(str::to_string);
         let domain = sess.sniffed_host.clone().or(target_domain.clone());
         let mut ips: Vec<IpAddr> = sess.target.ip().into_iter().collect();

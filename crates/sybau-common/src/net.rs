@@ -53,6 +53,16 @@ pub struct SocketOpts {
 }
 
 impl SocketOpts {
+    /// `self` with every option it leaves unset taken from `base`.
+    pub fn or(self, base: &SocketOpts) -> SocketOpts {
+        SocketOpts {
+            bind_interface: self.bind_interface.or_else(|| base.bind_interface.clone()),
+            fwmark: self.fwmark.or(base.fwmark),
+            protect: self.protect.or_else(|| base.protect.clone()),
+            connect_timeout: self.connect_timeout.or(base.connect_timeout),
+        }
+    }
+
     fn apply(&self, sock: SockRef<'_>) -> io::Result<()> {
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {

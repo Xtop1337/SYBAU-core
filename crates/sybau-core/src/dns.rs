@@ -8,9 +8,9 @@ use std::sync::{Arc, OnceLock};
 
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
-use sybau_common::net::ProtectFn;
 use sybau_common::{
-    io_err, ArcPacketConn, BoxStream, Host, Outbound, Resolver, Session, SystemResolver, Target,
+    io_err, ArcPacketConn, BoxStream, Host, Outbound, Resolver, Session, SocketOpts,
+    SystemResolver, Target,
 };
 use sybau_config::route::{DnsConfig, RouteConfig};
 use sybau_dns::cache::Cache;
@@ -169,6 +169,38 @@ impl Resolver for UpstreamResolver {
     }
 }
 
+/// DNS settings used when the config has none but needs the DNS module:
+/// the system's servers.
+pub fn default_config() -> DnsConfig {
+    serde_json::from_value(serde_json::json!({
+        "servers": [{"tag": "local", "address": "local"}]
+    }))
+    .expect("valid default DNS config")
+}
+
+/// `local` while a TUN is active: the system's DNS servers, asked
+/// through sockets that bypass the TUN.
+fn system_upstream(tag: &str, direct: Arc<dyn Outbound>) -> Arc<dyn Upstream> {
+    let servers = upstream::system_nameservers();
+    if servers.is_empty() {
+        tracing::warn!(target: "sybau::dns", "DNS server `{tag}`: no system DNS servers found; with the TUN active, system lookups may loop. Set an explicit server address.");
+        return Arc::new(upstream::Local);
+    }
+    let list: Vec<String> = servers.iter().map(|s| s.to_string()).collect();
+    debug!(target: "sybau::dns", "DNS server `{tag}`: system servers {}", list.join(", "));
+    let upstreams = servers
+        .into_iter()
+        .map(|addr| {
+            upstream::build(&Address::Udp(Target::from(addr)), direct.clone(), None)
+                .expect("plain UDP upstream")
+        })
+        .collect();
+    Arc::new(upstream::Fallback::new(
+        format!("local ({})", list.join(", ")),
+        upstreams,
+    ))
+}
+
 pub struct DnsResolver {
     servers: HashMap<String, Server>,
     rules: Vec<(Rule, String)>,
@@ -189,10 +221,11 @@ impl DnsResolver {
         assets: &Assets,
         geo: &GeoCache,
         rule_sets: &HashMap<String, Arc<RuleSet>>,
-        protect: Option<ProtectFn>,
+        socket: SocketOpts,
+        tun_active: bool,
     ) -> Result<Self> {
         let system: Arc<dyn Resolver> = Arc::new(SystemResolver);
-        let direct = internal_direct(system.clone(), protect);
+        let direct = internal_direct(system.clone(), socket);
         let parsed: Vec<(&sybau_config::route::DnsServerConfig, Address)> = cfg
             .servers
             .iter()
@@ -238,8 +271,12 @@ impl DnsResolver {
                     } else {
                         detour
                     };
-                    let upstream = upstream::build(address, outbound, s.tls.as_ref())
-                        .with_context(|| format!("DNS server `{}`", s.tag))?;
+                    let upstream = if *address == Address::Local && tun_active {
+                        system_upstream(&s.tag, direct.clone())
+                    } else {
+                        upstream::build(address, outbound, s.tls.as_ref())
+                            .with_context(|| format!("DNS server `{}`", s.tag))?
+                    };
                     upstreams.insert(s.tag.clone(), upstream.clone());
                     Kind::Upstream(upstream)
                 };

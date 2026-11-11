@@ -387,6 +387,77 @@ impl Upstream for Rcode {
     }
 }
 
+/// Asks several upstreams in turn until one answers.
+pub struct Fallback {
+    name: String,
+    upstreams: Vec<Arc<dyn Upstream>>,
+}
+
+impl Fallback {
+    pub fn new(name: impl Into<String>, upstreams: Vec<Arc<dyn Upstream>>) -> Self {
+        Self {
+            name: name.into(),
+            upstreams,
+        }
+    }
+}
+
+#[async_trait]
+impl Upstream for Fallback {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn exchange(&self, query: &Message) -> io::Result<Message> {
+        let mut last = io_err(io::ErrorKind::NotFound, "no DNS servers");
+        for up in &self.upstreams {
+            match up.exchange(query).await {
+                Ok(reply) => return Ok(reply),
+                Err(e) => last = e,
+            }
+        }
+        Err(last)
+    }
+}
+
+/// DNS servers the system is configured with. Used instead of the system
+/// resolver while a TUN captures traffic: the resolver's own queries would
+/// otherwise come back through the TUN.
+pub fn system_nameservers() -> Vec<std::net::SocketAddr> {
+    #[cfg(unix)]
+    {
+        // systemd-resolved's stub (127.0.0.53) forwards from its own,
+        // unmarked sockets; its upstream list avoids that loop.
+        for path in ["/run/systemd/resolve/resolv.conf", "/etc/resolv.conf"] {
+            if let Ok(text) = std::fs::read_to_string(path) {
+                let servers = parse_resolv_conf(&text);
+                if !servers.is_empty() {
+                    return servers;
+                }
+            }
+        }
+        Vec::new()
+    }
+    #[cfg(not(unix))]
+    {
+        Vec::new()
+    }
+}
+
+/// `nameserver` lines of a resolv.conf.
+pub fn parse_resolv_conf(text: &str) -> Vec<std::net::SocketAddr> {
+    text.lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            (parts.next()? == "nameserver").then_some(())?;
+            // A scoped IPv6 address (`fe80::1%eth0`) keeps only the address.
+            let addr = parts.next()?.split('%').next()?;
+            let ip: std::net::IpAddr = addr.parse().ok()?;
+            Some(std::net::SocketAddr::new(ip, 53))
+        })
+        .collect()
+}
+
 /// Builds the upstream for an address. `Address::FakeIp` is handled by
 /// the caller.
 pub fn build(
@@ -425,6 +496,19 @@ pub fn servfail(query: &Message) -> Message {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn resolv_conf() {
+        let text = "# comment\nnameserver 192.168.1.1\nnameserver fe80::1%eth0\noptions edns0\nnameserver bogus\n";
+        let servers = super::parse_resolv_conf(text);
+        assert_eq!(
+            servers,
+            vec![
+                "192.168.1.1:53".parse().unwrap(),
+                "[fe80::1]:53".parse().unwrap()
+            ]
+        );
+    }
+
     use super::*;
 
     #[test]

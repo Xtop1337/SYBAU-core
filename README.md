@@ -51,7 +51,10 @@
 | Подписки: base64, списки ссылок, Clash/mihomo YAML, sing-box/Xray JSON — по содержимому (`sybau import`, `subscriptions.parse`) | готово, проверено |
 | Скачивание подписок по URL и автообновление по таймеру | не начато: содержимое пока передаёт приложение |
 | Системный прокси Windows: включается на время работы `sybau.exe`, восстанавливается при выходе, после падения (сторожевой процесс) и при следующем запуске | готово; проверка — Windows-смоук-тест в CI |
-| TUN (Wintun, auto-route, kill switch) | не начато (этап 5) |
+| TUN на Linux: userspace TCP/IP-стек, IPv4/IPv6, MTU, auto-route (policy routing), strict-route, `route_address` / `route_exclude_address`, перехват DNS (UDP и TCP, на любой сервер), fake-IP, защита от петли (`SO_MARK`), исключение пользователей (`include_uid`/`exclude_uid`) и программ (`include_process`/`exclude_process`), kill switch на nftables (остаётся после падения, переживает `core.reload`), `sybau tun-cleanup` | готово, проверено в network namespace против Xray (`tests/tun/linux-netns.sh`, 28 проверок, в CI) |
+| TUN на Android: дескриптор от VpnService (`file_descriptor`; ядро работает с его копией, `core.reload` его не закрывает), `protect` для сокетов ядра | путь с дескриптором проверен на Linux так, как его передаёт VpnService; сборка под Android — в CI |
+| TUN на Windows (Wintun, маршруты, привязка сокетов к физическому интерфейсу, kill switch на WFP) | в работе (этап 5) |
+| TUN-стеки `system` и `mixed` (TCP через ядро ОС) | в работе: пока всегда используется `userspace` |
 | Hysteria2, Hysteria, TUIC, XHTTP, mKCP | не начато (этап 6) |
 | Серверные inbound, REALITY-сервер, TProxy | не начато (этап 7) |
 | ShadowTLS, AnyTLS, Snell, SSH, Tor, WireGuard, ECH, обход DPI | не начато (этап 8) |
@@ -226,9 +229,48 @@ DNS (формат sing-box). `direct` и `domain_strategy` резолвят че
 }
 ```
 
-Fake-IP отдаётся только приложениям (через `dns.query` и, позже, перехват DNS
-в TUN); запросы самого ядра всегда идут на настоящие серверы. Соединение на
+Fake-IP отдаётся только приложениям (через `dns.query` и перехват DNS в TUN);
+запросы самого ядра всегда идут на настоящие серверы. Соединение на
 fake-адрес превращается обратно в домен до роутинга.
+
+TUN (имена полей как в sing-box; показаны значения по умолчанию, кроме
+исключений и `kill_switch`):
+
+```json
+{
+  "type": "tun", "tag": "tun",
+  "interface_name": "sybau0",
+  "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+  "mtu": 9000,
+  "auto_route": true,
+  "strict_route": false,
+  "route_exclude_address": ["203.0.113.0/24"],
+  "exclude_uid": [1001],
+  "exclude_process": ["steam", "qbittorrent"],
+  "dns_hijack": true,
+  "kill_switch": true,
+  "udp_timeout": "5m"
+}
+```
+
+- `auto_route` на Linux ставит правила `ip rule` (приоритеты 8999–9002) и
+  таблицу `table` (2022). Собственные сокеты ядра помечаются `fwmark` (0x2023)
+  и идут мимо TUN, поэтому петли нет.
+- Без `strict_route` маршруты локальных сетей из основной таблицы остаются в
+  силе: LAN доступен напрямую. С `strict_route` в TUN уходит всё, кроме
+  `route_exclude_address`.
+- `dns_hijack` отвечает на любой DNS-запрос на порт 53 (UDP и TCP) через
+  DNS-модуль ядра. Если в конфиге нет секции `dns`, используются системные
+  серверы из `resolv.conf` (для systemd-resolved — его настоящие серверы, а не
+  `127.0.0.53`), и запросы к ним тоже идут мимо TUN.
+- `kill_switch` добавляет таблицу nftables `inet sybau_killswitch`. Она
+  пропускает только TUN, loopback, локальные сети (без `strict_route`) и
+  собственный трафик ядра. Таблица остаётся, если ядро упало или убито, и
+  снимается при штатном выходе или командой `sybau tun-cleanup`.
+- `include_process` / `exclude_process` сравнивают имя файла или полный путь
+  программы. Соединения исключённых программ уходят напрямую, минуя правила.
+- На Android приложение передаёт открытый дескриптор VpnService в
+  `file_descriptor`; маршруты и исключения приложений задаёт сам VpnService.
 
 Системный прокси Windows (по умолчанию объявляется первый `mixed`/`http` inbound):
 
@@ -268,6 +310,7 @@ fake-адрес превращается обратно в домен до ро�
 | `sybau convert [--from xray\|sing-box\|auto] FILE [-o OUT]` | переводит конфиг в формат SYBAU и печатает, что не удалось перенести |
 | `sybau import ССЫЛКА\|ФАЙЛ\|-` | превращает ссылки или содержимое подписки в outbound-ы |
 | `sybau ctl METHOD [JSON] [--follow]` | запрос к работающему ядру |
+| `sybau tun-cleanup [--table N]` | снимает маршруты и kill switch, оставшиеся после падения ядра с TUN |
 
 Несколько ядер одновременно запускаются с разными `--profile`.
 
@@ -325,6 +368,13 @@ tests/interop/build-refs.sh
 
 ```bash
 cargo build -p sybau && tests/interop/run.py
+```
+
+TUN на Linux (нужны root, `ip`, `nft`, curl и python3; Xray берётся из
+`tests/interop/.bin` или из `XRAY_BIN`):
+
+```bash
+sudo tests/tun/linux-netns.sh target/debug/sybau
 ```
 
 То же в Docker, с официальными образами Xray и sing-box:

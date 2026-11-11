@@ -109,6 +109,8 @@ pub enum InboundKind {
     Mixed(LocalProxyInbound),
     Socks(LocalProxyInbound),
     Http(LocalProxyInbound),
+    /// Virtual network interface that captures the system's traffic.
+    Tun(Box<TunInbound>),
 }
 
 impl InboundKind {
@@ -117,8 +119,103 @@ impl InboundKind {
             InboundKind::Mixed(_) => "mixed",
             InboundKind::Socks(_) => "socks",
             InboundKind::Http(_) => "http",
+            InboundKind::Tun(_) => "tun",
         }
     }
+}
+
+fn default_tun_name() -> String {
+    if cfg!(windows) {
+        "SYBAU".into()
+    } else {
+        "sybau0".into()
+    }
+}
+fn default_tun_address() -> Vec<String> {
+    vec!["172.19.0.1/30".into(), "fdfe:dcba:9876::1/126".into()]
+}
+fn default_tun_mtu() -> u16 {
+    9000
+}
+fn default_tun_fwmark() -> u32 {
+    0x2023
+}
+fn default_tun_table() -> u32 {
+    2022
+}
+fn default_tun_stack() -> String {
+    "userspace".into()
+}
+
+/// TUN inbound. Field names follow sing-box where they exist there.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TunInbound {
+    #[serde(default = "default_tun_name")]
+    pub interface_name: String,
+    /// Addresses of the interface, IPv4 and/or IPv6 in CIDR form.
+    #[serde(default = "default_tun_address")]
+    pub address: Vec<String>,
+    #[serde(default = "default_tun_mtu")]
+    pub mtu: u16,
+    /// Install routes that send all traffic (or `route_address`) into the
+    /// interface. Ignored when `file_descriptor` is set: the platform
+    /// (Android VpnService) owns the routes then.
+    #[serde(default = "default_true")]
+    pub auto_route: bool,
+    /// Without it, routes of the local networks still win over the TUN
+    /// (LAN stays reachable); with it, everything goes into the TUN.
+    #[serde(default)]
+    pub strict_route: bool,
+    /// Route only these destinations into the TUN.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub route_address: Vec<String>,
+    /// Never route these destinations into the TUN.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub route_exclude_address: Vec<String>,
+    /// Linux: only traffic of these users goes into the TUN.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub include_uid: Vec<u32>,
+    /// Linux: traffic of these users bypasses the TUN.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude_uid: Vec<u32>,
+    /// Only connections of these programs (name or full path) are proxied;
+    /// the rest go out directly.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub include_process: Vec<String>,
+    /// Connections of these programs go out directly.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude_process: Vec<String>,
+    /// Answer DNS queries sent to any server on port 53 with the core's
+    /// DNS module.
+    #[serde(default = "default_true")]
+    pub dns_hijack: bool,
+    /// Block traffic that would leave outside the TUN. The block stays if
+    /// the core dies and is lifted by a clean exit or `sybau tun-cleanup`.
+    #[serde(default)]
+    pub kill_switch: bool,
+    /// `userspace` (TCP/IP in the core), `system` (the OS TCP stack) or
+    /// `mixed` (system TCP, userspace UDP).
+    #[serde(default = "default_tun_stack")]
+    pub stack: String,
+    /// Open TUN descriptor handed over by the platform (Android).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_descriptor: Option<i32>,
+    /// Linux: mark on the core's own sockets, so they bypass the TUN.
+    #[serde(default = "default_tun_fwmark")]
+    pub fwmark: u32,
+    /// Linux: policy routing table for the TUN routes.
+    #[serde(default = "default_tun_table")]
+    pub table: u32,
+    /// How long an idle UDP flow is kept, e.g. `5m`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub udp_timeout: Option<String>,
+    /// Windows: path of `wintun.dll` (default: next to the executable,
+    /// then the copy built into it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wintun_file: Option<String>,
+    #[serde(default)]
+    pub sniff: SniffConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

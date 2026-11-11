@@ -66,6 +66,13 @@ enum Command {
         /// A link, or a file with links / subscription content; `-` reads stdin.
         source: String,
     },
+    /// Remove the routes and the kill switch a TUN run left behind
+    /// (after a crash or `kill -9`; a clean exit removes them itself).
+    TunCleanup {
+        /// Routing table of the TUN inbound (`table` in the config).
+        #[arg(long, default_value_t = 2022)]
+        table: u32,
+    },
     /// Internal: restores the system proxy if the core with `pid` dies.
     #[command(hide = true)]
     SysproxyGuard {
@@ -125,6 +132,11 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 cfg.inbounds.len(),
                 cfg.outbounds.len()
             );
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::TunCleanup { table } => {
+            sybau_tun::routes::cleanup(table);
+            println!("TUN routes and kill switch removed");
             Ok(ExitCode::SUCCESS)
         }
         Command::SysproxyGuard { pid, profile } => {
